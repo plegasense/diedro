@@ -1,6 +1,6 @@
 # Compilar Diedro (Android arm64)
 
-Requisitos: Android SDK/NDK r28, JDK 17+, Gradle 9, Flutter (canal con Flutter GPU) Flutter 3.47 (canal stable, con Flutter GPU) y CMake 3.22.1. Diedro usa **OpenCASCADE 7.9.3 (etiqueta `V7_9_3`) sin modificar**, estático para android-arm64.
+Requisitos: Android SDK/NDK r28, JDK 17+, Gradle 9, Flutter 3.47 (canal stable, con Flutter GPU) y CMake 3.22.1. Diedro usa **OpenCASCADE 7.9.3 (etiqueta `V7_9_3`) sin modificar**, estático para android-arm64.
 
 0. OCCT: `tools/build_occt_android.sh <carpeta de trabajo>` (clona la etiqueta V7_9_3 y la compila con los parámetros exactos de Diedro; tarda un buen rato).
 1. `android/local.properties`: `sdk.dir=<ruta SDK>` y `occt.dir=<carpeta install de OCCT arm64>`.
