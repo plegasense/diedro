@@ -7,4 +7,4 @@
 - Los ajustes y la lista de archivos recientes se guardan solo en el dispositivo y se eliminan al desinstalar la app. La copia de seguridad en la nube de Android está desactivada para esta app.
 - No hay anuncios, analítica, cuentas ni servicios de terceros.
 
-Contacto: abre una incidencia en el repositorio del proyecto.
+Contacto: plegasense@gmail.com

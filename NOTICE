@@ -1,4 +1,6 @@
-Diedro — planos de fabricación desde STEP. Licencia: GNU GPL v3.0 o posterior.
+Diedro — planos de fabricación desde STEP.
+Copyright (C) 2026 Plegasense. Licencia: GNU GPL v3.0 o posterior (ver LICENSE).
+Contacto: plegasense@gmail.com
 
 Componentes de terceros:
 - Open CASCADE Technology 7.9.x — LGPL 2.1 con excepción OCCT (https://dev.opencascade.org). Enlazado estáticamente y sin modificar;
