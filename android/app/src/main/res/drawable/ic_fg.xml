@@ -1,0 +1,7 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Contenido reducido para caber en la zona segura (círculo de 66 dp) de los iconos adaptativos: D + cota abajo -->
+    <group android:pivotX="59" android:pivotY="61" android:scaleX="0.6" android:scaleY="0.6" android:translateX="-5" android:translateY="-7">
+        <path android:strokeColor="#EDEAE2" android:strokeWidth="7" android:pathData="M38,30 L38,78 L56,78 A24,24 0 0 0 56,30 Z"/>
+        <path android:strokeColor="#36C2B4" android:strokeWidth="3" android:pathData="M33,90 L85,90 M33,86 L33,94 M85,86 L85,94"/>
+    </group>
+</vector>

@@ -1,0 +1,10 @@
+<resources>
+    <style name="Theme.Diedro" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorAccent">#36C2B4</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:statusBarColor">#0F1923</item>
+        <item name="android:navigationBarColor">#0F1923</item>
+        <item name="android:textColorPrimary">#E8ECEF</item>
+        <item name="android:textColorHint">#6F8190</item>
+    </style>
+</resources>

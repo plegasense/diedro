@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <!-- Ninguna librería (Flutter) puede reintroducir INTERNET: se elimina del manifiesto fusionado. -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove"/>
+    <!-- Sin permiso INTERNET a propósito: la app es 100 % offline. -->
+    <application android:label="Diedro" android:icon="@mipmap/ic_launcher" android:theme="@style/Theme.Diedro" android:allowBackup="false" android:supportsRtl="true">
+        <meta-data android:name="io.flutter.embedding.android.EnableFlutterGPU" android:value="true"/>
+        <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="true"/>
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop" android:configChanges="orientation|screenSize|keyboardHidden">
+            <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/><action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="model/step"/><data android:mimeType="application/step"/><data android:mimeType="application/STEP"/><data android:mimeType="application/x-step"/><data android:mimeType="application/octet-stream"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="content"/><data android:scheme="file"/><data android:mimeType="*/*"/>
+                <data android:pathPattern=".*\\.step"/><data android:pathPattern=".*\\.stp"/><data android:pathPattern=".*\\.diedro"/>
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

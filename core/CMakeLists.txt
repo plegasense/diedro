@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.22)
+project(diedro_core CXX)
+set(CMAKE_CXX_STANDARD 17)
+# Privacidad: las rutas de compilación (__FILE__, depuración) no entran en los binarios publicados.
+add_compile_options(-ffile-prefix-map=${CMAKE_SOURCE_DIR}=diedro -fdebug-prefix-map=${CMAKE_SOURCE_DIR}=diedro)
+find_package(OpenCASCADE REQUIRED PATHS ${OCCT_DIR} NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+set(OCCT_LIBS TKDESTEP TKDEIGES TKBinXCAF TKBin TKBinL TKHLR TKXCAF TKCAF TKLCAF TKCDF TKDE TKXSBase TKPrim TKMesh TKBO TKBool TKFeat TKShHealing TKTopAlgo TKGeomAlgo TKBRep TKGeomBase TKG3d TKG2d TKMath TKernel)
+add_library(diedro_core STATIC src/pdf.cpp src/export.cpp src/json.cpp src/layout.cpp src/prism.cpp src/check.cpp src/analyze.cpp src/classify.cpp src/datum_cad.cpp src/assembly.cpp src/gear.cpp src/special.cpp src/inspect.cpp src/dfm.cpp
+    src/iso.cpp src/edit.cpp src/pmi.cpp src/i18n.cpp src/i18n_table.cpp src/font.cpp src/font_osifont.cpp src/notice_paths.cpp)
+target_include_directories(diedro_core PUBLIC src ${OpenCASCADE_INCLUDE_DIR})
+target_link_directories(diedro_core PUBLIC ${OpenCASCADE_LIBRARY_DIR})
+if(ANDROID)
+  add_library(diedro_jni SHARED src/jni.cpp)
+  target_link_libraries(diedro_jni PRIVATE diedro_core ${OCCT_LIBS} log)
+  target_link_options(diedro_jni PRIVATE -Wl,--gc-sections -Wl,--strip-all -Wl,-z,max-page-size=16384)
+endif()
+add_executable(diedro_cli src/cli.cpp)
+target_link_libraries(diedro_cli PRIVATE diedro_core ${OCCT_LIBS})

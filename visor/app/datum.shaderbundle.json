@@ -1,0 +1,22 @@
+{
+  "MeshVertex": {
+    "type": "vertex",
+    "file": "shaders/mesh.vert"
+  },
+  "MeshFragment": {
+    "type": "fragment",
+    "file": "shaders/mesh.frag"
+  },
+  "LineVertex": {
+    "type": "vertex",
+    "file": "shaders/lines.vert"
+  },
+  "RichVertex": {
+    "type": "vertex",
+    "file": "shaders/rich.vert"
+  },
+  "RichFragment": {
+    "type": "fragment",
+    "file": "shaders/rich.frag"
+  }
+}

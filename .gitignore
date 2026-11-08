@@ -1,0 +1,13 @@
+build/
+.cxx/
+.gradle/
+.dart_tool/
+local.properties
+*.keystore
+*.jks
+keystore.properties
+.DS_Store
+.idea/
+pruebas/
+*.aab
+*.apk

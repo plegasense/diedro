@@ -1,0 +1,11 @@
+in vec3 v_color;
+in float v_clip;
+in float v_alpha;
+out vec4 frag_color;
+
+void main() {
+  if (v_clip > 0.0) {
+    discard;
+  }
+  frag_color = vec4(v_color, v_alpha);
+}
