@@ -102,13 +102,18 @@ public class ZoomView extends View {
 
     private float curScale() { float[] v = new float[9]; m.getValues(v); return v[Matrix.MSCALE_X]; }
 
+    private int topInset;
+    /** Margen superior reservado (barra de edición) para que la hoja no quede debajo. */
+    public void setTopInset(int px) { if (px != topInset) { topInset = px; fitToView(); } }
+
     private void fitToView() {
         if (bmp == null || getWidth() == 0) return;
         float pad = Ui.dp(getContext(), 20);
-        fit = Math.min((getWidth() - 2 * pad) / bmp.getWidth(), (getHeight() - 2 * pad) / bmp.getHeight());
+        float hh = getHeight() - topInset - Ui.dp(getContext(), 14);   // hueco inferior para el texto de ayuda
+        fit = Math.min((getWidth() - 2 * pad) / bmp.getWidth(), (hh - 2 * pad) / bmp.getHeight());
         m.reset();
         m.postScale(fit, fit);
-        m.postTranslate((getWidth() - bmp.getWidth() * fit) / 2, (getHeight() - bmp.getHeight() * fit) / 2);
+        m.postTranslate((getWidth() - bmp.getWidth() * fit) / 2, topInset + (hh - bmp.getHeight() * fit) / 2);
         invalidate();
     }
 

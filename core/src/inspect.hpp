@@ -15,5 +15,5 @@ std::vector<Drawing> inspectionSheets(const Drawing& d, const std::vector<InspRo
 void setUserTol(Meta& m, const std::string& key, std::string v);
 // Plano con globos + hojas de tabla; escribe el CSV en csvPath (si no está vacío)
 std::vector<Drawing> withInspection(Drawing d, const Meta& m, const std::string& csvPath);
-std::string inspectionCsv(const std::vector<InspRow>& rows);
+std::string inspectionCsv(const std::vector<InspRow>& rows, const std::string& lang);
 }  // namespace diedro

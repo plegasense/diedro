@@ -233,10 +233,15 @@ std::vector<Drawing> inspectionSheets(const Drawing& d, const std::vector<InspRo
     return out;
 }
 
-std::string inspectionCsv(const std::vector<InspRow>& rows) {
-    std::string o = "\xEF\xBB\xBF" "n;caracteristica;requisito;tolerancia;cantidad;clase;vista;x_hoja_mm;y_hoja_mm;resultado;util;nc\n";
+std::string inspectionCsv(const std::vector<InspRow>& rows, const std::string& lang) {
+    const char* h[] = {"N.°", "Característica", "Requisito", "Tolerancia", "Cant.", "Clase", "Vista"};
+    const char* h2[] = {"Resultado", "Útil", "N.° NC"};
+    std::string o = "\xEF\xBB\xBF";
+    for (auto x : h) o += tr(x, lang) + ";";
+    o += "x_mm;y_mm;";
+    for (int i = 0; i < 3; i++) o += tr(h2[i], lang) + (i < 2 ? ";" : "\n");
     auto f = [](double v) { char b[32]; std::snprintf(b, sizeof b, "%.1f", v); return std::string(b); };
-    for (auto& r : rows) o += std::to_string(r.n) + ";" + r.kind + ";" + r.req + ";" + r.tol + ";" + std::to_string(r.qty) + ";" + (r.cls ? std::string(1, r.cls) : std::string()) + ";" + r.view + ";" + (r.placed ? f(r.x) + ";" + f(r.y) : ";") + ";;;\n";
+    for (auto& r : rows) o += std::to_string(r.n) + ";" + tr(r.kind, lang) + ";" + r.req + ";" + tr(r.tol, lang) + ";" + std::to_string(r.qty) + ";" + (r.cls ? std::string(1, r.cls) : std::string()) + ";" + r.view + ";" + (r.placed ? f(r.x) + ";" + f(r.y) : ";") + ";;;\n";
     return o;
 }
 
@@ -250,7 +255,7 @@ std::vector<Drawing> withInspection(Drawing d, const Meta& m, const std::string&
     auto rows = addBalloons(d, m); auto pages = inspectionSheets(d, rows, m);
     for (auto& p : pages) { p.kind = "inspect"; p.label = tr("TABLA DE INSPECCIÓN", m.lang); }
     pages.insert(pages.begin(), d);
-    if (!csvPath.empty()) std::ofstream(csvPath, std::ios::binary) << inspectionCsv(rows);
+    if (!csvPath.empty()) std::ofstream(csvPath, std::ios::binary) << inspectionCsv(rows, m.lang);
     return pages;
 }
 }  // namespace diedro

@@ -2021,7 +2021,7 @@ class _ViewerPageState extends State<ViewerPage> {
                   children: [
                     ConstrainedBox(
                       constraints: BoxConstraints(
-                        maxWidth: MediaQuery.of(context).size.width - 240,
+                        maxWidth: MediaQuery.of(context).size.width - 150,
                       ),
                       child: Text(
                         _shownName ?? doc.name,
@@ -2036,6 +2036,7 @@ class _ViewerPageState extends State<ViewerPage> {
                     const SizedBox(width: 6),
                   ],
                 ),
+                if (MediaQuery.of(context).size.height >= 420)
                 Padding(
                   padding: const EdgeInsets.only(left: 8, right: 4),
                   child: ConstrainedBox(
@@ -3066,7 +3067,7 @@ class _ViewerPageState extends State<ViewerPage> {
     return Glass(
       radius: 24,
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-      child: Column(mainAxisSize: MainAxisSize.min, children: items),
+      child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: items)),
     );
   }
 }

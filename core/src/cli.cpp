@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
     std::string pdf; std::vector<Drawing> allp{d};
     if (std::getenv("DIEDRO_INSPECT")) {   // G8: globos + tabla de inspección (PDF de varias hojas) y CSV junto al PDF
         auto rows = addBalloons(d, m); auto pages = inspectionSheets(d, rows, m); pages.insert(pages.begin(), d); allp = pages;
-        pdf = toPdfMulti(pages); std::ofstream(std::string(argv[2]) + ".csv", std::ios::binary) << inspectionCsv(rows);
+        pdf = toPdfMulti(pages); std::ofstream(std::string(argv[2]) + ".csv", std::ios::binary) << inspectionCsv(rows, m.lang);
         for (auto& r : rows) std::printf("CARACT %d %s %s | %s x%d %c %s\n", r.n, r.kind.c_str(), r.req.c_str(), r.tol.c_str(), r.qty, r.cls ? r.cls : '-', r.placed ? "globo" : "SIN-GLOBO");
     } else pdf = toPdf(d);
     if (const char* jp = std::getenv("DIEDRO_JSON")) std::ofstream(jp, std::ios::binary) << toJson(d);

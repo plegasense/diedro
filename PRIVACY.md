@@ -1,4 +1,17 @@
-# Política de privacidad de Diedro
+# Diedro — Privacy policy / Política de privacidad
+
+## English
+
+**Diedro does not collect, share or transmit any personal or usage data.**
+
+- The app works offline and has **no Internet permission**.
+- The STEP files you open are processed only on your device. Drawings are saved wherever you choose.
+- Settings and the recent-files list are stored only on the device and are deleted when you uninstall the app. Android cloud backup is disabled for this app.
+- There are no ads, analytics, accounts or third-party services.
+
+Contact: plegasense@gmail.com
+
+## Español
 
 **Diedro no recopila, comparte ni transmite ningún dato personal ni de uso.**
 

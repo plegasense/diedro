@@ -64,7 +64,7 @@ class SheetRail extends ScrollView {
         items.clear();
         for (String l : r.split("\n")) {
             String[] q = l.split("\t", -1);
-            if (q.length >= 4 && q[0].equals("HOJA")) items.add(new String[]{q[2], q[3]});
+            if (q.length >= 4 && q[0].equals("HOJA")) items.add(new String[]{q[2], q[2].equals("inspect") ? I18n.tr("Tabla de inspección") : q[3]});
         }
         cur = 0;
         choose = false;
@@ -104,8 +104,9 @@ class SheetRail extends ScrollView {
             im.setScaleType(ImageView.ScaleType.FIT_CENTER);
             im.setBackgroundColor(Color.WHITE);
             card.addView(im, new LinearLayout.LayoutParams(-1, Ui.dp(c, 64)));
+            boolean insp = "inspect".equals(items.get(i)[0]);
             TextView nm = Ui.text(c, items.get(i)[1], 11, Ui.TEXT, true);
-            nm.setSingleLine(); nm.setEllipsize(android.text.TextUtils.TruncateAt.END); nm.setGravity(Gravity.CENTER);
+            if (insp) nm.setMaxLines(2); else nm.setSingleLine(); nm.setEllipsize(android.text.TextUtils.TruncateAt.END); nm.setGravity(Gravity.CENTER);
             nm.setPadding(0, Ui.dp(c, 4), 0, 0);
             card.addView(nm, new LinearLayout.LayoutParams(-1, -2));
             TextView ch = Ui.text(c, kindName(items.get(i)[0]), 9, kindColor(items.get(i)[0]), true);

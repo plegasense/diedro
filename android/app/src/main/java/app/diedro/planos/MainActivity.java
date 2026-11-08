@@ -174,6 +174,7 @@ public class MainActivity extends Activity {
         FrameLayout.LayoutParams dl = (FrameLayout.LayoutParams) drawer.getLayoutParams();
         if (wide || land) { dl.width = dp(360); dl.height = -1; dl.gravity = Gravity.END; }
         else { dl.width = -1; dl.height = dh; dl.gravity = Gravity.BOTTOM; }
+        dl.setMargins((wide || land) ? 0 : dp(8), 0, dp(8), dp(10));   // vertical: mismo margen a ambos lados (antes se pegaba al borde izquierdo)
         drawer.setLayoutParams(dl);
         boolean showDrawer = drawerOpen && mode == 0;
         drawer.setVisibility(showDrawer ? View.VISIBLE : View.GONE);
@@ -188,6 +189,8 @@ public class MainActivity extends Activity {
         body.requestLayout();
     }
 
+    @Override public void onConfigurationChanged(android.content.res.Configuration c) { super.onConfigurationChanged(c); layoutPanes(); fitHome(); }   // rotación: antes el diseño quedaba como en la orientación anterior
+
     private void setDrawer(boolean open) {
         drawerOpen = open;
         dataBtn.setBackground(open ? Ui.rr(this, Ui.TEAL, 20) : null);
@@ -198,7 +201,11 @@ public class MainActivity extends Activity {
     private TextView seg(String s) {
         TextView t = Ui.text(this, s, 14, Ui.TEXT, true);
         t.setGravity(Gravity.CENTER);
-        t.setPadding(dp(16), dp(8), dp(16), dp(8));
+        boolean nw = getResources().getConfiguration().screenWidthDp < 440;
+        int px = nw ? 7 : 16;
+        if (nw) t.setTextSize(13);  // pantallas estrechas: que quepan Plano/Dividido/3D/Editar/Datos
+        t.setSingleLine(true);
+        t.setPadding(dp(px), dp(8), dp(px), dp(8));
         Ui.press(t);
         return t;
     }
@@ -344,6 +351,17 @@ public class MainActivity extends Activity {
     private static String t(String es) { return I18n.tr(es); }
 
     // ---------------------------------------------------------------- portada
+    private View homeLogo, homeGap; private TextView homeName;
+    /** En horizontal (poca altura) la portada se compacta para que el botón Abrir siga visible. */
+    private void fitHome() {
+        if (homeLogo == null) return;
+        boolean low = getResources().getConfiguration().screenHeightDp < 480;
+        homeLogo.getLayoutParams().width = homeLogo.getLayoutParams().height = dp(low ? 80 : 170);
+        homeGap.getLayoutParams().height = dp(low ? 4 : 36);
+        homeName.setTextSize(low ? 26 : 40); homeName.setPadding(0, dp(low ? 4 : 18), 0, dp(6));
+        homeLogo.requestLayout();
+    }
+
     private View buildHome() {
         LinearLayout c = new LinearLayout(this);
         c.setOrientation(LinearLayout.VERTICAL);
@@ -359,6 +377,7 @@ public class MainActivity extends Activity {
         LogoView logo = new LogoView(this);
         logo.setOnClickListener(v -> { v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); logo.startAnim(); logo.postDelayed(logo::stopAnim, 2600); });   // toque: la cota «mide» la D
         c.addView(logo, new LinearLayout.LayoutParams(dp(170), dp(170)));
+        homeLogo = logo;
         TextView name = Ui.text(this, "D i e d r o", 40, Ui.TEXT, false);
         name.setTypeface(Typeface.create("sans-serif-thin", Typeface.NORMAL));
         name.setGravity(Gravity.CENTER);
@@ -381,6 +400,7 @@ public class MainActivity extends Activity {
         Ui.rise(name, 2, 14); Ui.rise(tag, 3, 14); Ui.rise(open, 4, 24);
         View gap = new View(this);
         c.addView(gap, new LinearLayout.LayoutParams(1, dp(36)));
+        homeName = name; homeGap = gap; fitHome();
         return c;
     }
 
@@ -400,7 +420,7 @@ public class MainActivity extends Activity {
         TextView t = Ui.text(this, label, 12, Ui.MUTED, false);
         t.setPadding(dp(4), dp(10), 0, dp(4));
         p.addView(t);
-        EditText e = new EditText(this);
+        EditText e = new EditText(this); e.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI | android.view.inputmethod.EditorInfo.IME_ACTION_DONE);   // horizontal: teclado sin pantalla completa
         e.setHint(hint);
         e.setSingleLine();
         e.setInputType(InputType.TYPE_CLASS_TEXT);
@@ -480,7 +500,7 @@ public class MainActivity extends Activity {
         col.addView(bar);
         LinearLayout modes = new LinearLayout(this);
         modes.setGravity(Gravity.CENTER_VERTICAL);
-        modes.setPadding(dp(14), 0, dp(14), dp(6));
+        modes.setPadding(dp(10), 0, dp(10), dp(6));
         LinearLayout segs = new LinearLayout(this);
         segs.setBackground(Ui.rr(this, Ui.SURFACE2, 24));
         segs.setPadding(dp(3), dp(3), dp(3), dp(3));
@@ -803,13 +823,15 @@ public class MainActivity extends Activity {
         final File f = pdf;
         final int seq = ++renderSeq;
         renderQ.execute(() -> {
-            String info = Native.render(f.getPath(), ops);
-            Bitmap b = info.startsWith("ERROR") ? null : render(f);
+            String info0 = Native.render(f.getPath(), ops);
+            final boolean ok = !info0.startsWith("ERROR");
+            final String info = ok ? info0 : "";   // si falla la edición, el PDF anterior sigue válido: al menos se cambia de hoja
+            Bitmap b = render(f);
             runOnUiThread(() -> {
                 if (b == null || seq != renderSeq) return;
                 java.util.ArrayList<float[]> hr = new java.util.ArrayList<>(), vr = new java.util.ArrayList<>();
                 for (String l : info.split("\n")) refLine(l, hr, vr);
-                ed.info(info);
+                if (ok) ed.info(info);
                 holeRefs = ed.page == 0 ? hr : new java.util.ArrayList<>(); viewRefs = ed.page == 0 ? vr : new java.util.ArrayList<>();
                 java.util.ArrayList<float[]> mk = new java.util.ArrayList<>();
                 java.util.ArrayList<int[]> mi = new java.util.ArrayList<>();
@@ -847,6 +869,7 @@ public class MainActivity extends Activity {
         if (editBar == null) return;
         editBar.removeAllViews();
         editScroll.setVisibility(ed.on ? View.VISIBLE : View.GONE);
+        zoom.setTopInset(ed.on ? dp(44) : 0);
         if (!ed.on) return;
         for (int i = 0; i < ed.pages && ed.pages > 1 && (rail == null || rail.count() < 2); i++) { final int k = i; editBar.addView(chip(t("Hoja") + " " + (i + 1), ed.page == i, v -> ed.setPage(k))); }
         String[] tn = {"Mover", "Texto", "Línea", "Flecha", "Cota"};
@@ -894,7 +917,7 @@ public class MainActivity extends Activity {
         cap.setLetterSpacing(0.12f);
         cap.setPadding(0, 0, 0, dp(12));
         box.addView(cap);
-        EditText e = new EditText(this);
+        EditText e = new EditText(this); e.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI | android.view.inputmethod.EditorInfo.IME_ACTION_DONE);   // horizontal: teclado sin pantalla completa
         e.setSingleLine();
         e.setText(init);
         e.setSelection(init.length());
@@ -1031,7 +1054,7 @@ public class MainActivity extends Activity {
         TextView ti = Ui.text(this, shown, 30, Ui.TEXT, true);
         ti.setPadding(0, dp(4), 0, dp(16));
         box.addView(ti);
-        EditText e = new EditText(this);
+        EditText e = new EditText(this); e.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI | android.view.inputmethod.EditorInfo.IME_ACTION_DONE);   // horizontal: teclado sin pantalla completa
         e.setSingleLine();
         e.setHint(key.startsWith("Ø") ? t("Ajuste, desviación o rosca") : t("Desviación"));
         e.setText(tols.get(key) == null ? "" : tols.get(key));
@@ -1208,10 +1231,16 @@ public class MainActivity extends Activity {
     private void load(Uri u) {
         String name = "pieza.step";
         try (android.database.Cursor c = getContentResolver().query(u, null, null, null, null)) {
-            if (c != null && c.moveToFirst()) name = c.getString(c.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME));
+            if (c != null && c.moveToFirst()) { String n = c.getString(c.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME)); if (n != null && !n.isEmpty()) name = n; }
         } catch (Exception ignored) {}
-        try (InputStream in = getContentResolver().openInputStream(u); OutputStream out = new FileOutputStream(step = new File(getCacheDir(), "in.step"))) {
-            copy(in, out);
+        try {
+            File tmp = new File(getCacheDir(), "in.tmp"), dst = new File(getCacheDir(), "in.step");
+            try (InputStream in = getContentResolver().openInputStream(u); OutputStream out = new FileOutputStream(tmp)) {
+                if (in == null) throw new IOException("sin datos");
+                copy(in, out);
+            }
+            if (!tmp.renameTo(dst)) throw new IOException("sin espacio");
+            step = dst;   // solo si la copia terminó bien
         } catch (Exception e) {
             Ui.snack(rootFrame, t("No se pudo leer el archivo:") + " " + e.getMessage(), true);
             return;
@@ -1255,7 +1284,8 @@ public class MainActivity extends Activity {
         final Loader[] ld = {null};
         final Runnable showLd = () -> { ld[0] = new Loader(this, t("Generando plano…"), t("Las piezas complejas pueden tardar unos minutos.")); ld[0].show(rootFrame); };
         rootFrame.postDelayed(showLd, 1500);
-        new Thread(() -> {
+        final int my = ++genId;
+        new Thread(() -> { synchronized (GEN_LOCK) {
             File out = new File(getCacheDir(), "plano.pdf");
             out.delete();
             new File(getCacheDir(), "plano.pdf.csv").delete();
@@ -1268,6 +1298,7 @@ public class MainActivity extends Activity {
             Bitmap bmp = out.exists() ? render(out) : null;
             runOnUiThread(() -> {
                 rootFrame.removeCallbacks(showLd); if (ld[0] != null) ld[0].hide(rootFrame);
+                if (my != genId) return;   // llegó otra carga/regeneración: este resultado ya no vale
                 update.setEnabled(true);
                 status.setText("");
                 showResult(r);
@@ -1280,8 +1311,10 @@ public class MainActivity extends Activity {
                 if (!info.isEmpty()) ed.info(info);
                 if (bmp != null) { pdf = out; zoom.setBitmap(bmp); applyMarks(bmp); applyHoles(bmp); buildEditBar(); zoom.setAlpha(0f); zoom.animate().alpha(1f).setDuration(450).start(); }
             });
-        }).start();
+        } }).start();
     }
+    private int genId;
+    private static final Object GEN_LOCK = new Object();
 
     private Bitmap render(File f) {
         try (ParcelFileDescriptor fd = ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY); PdfRenderer r = new PdfRenderer(fd); PdfRenderer.Page pg = r.openPage(Math.min(ed.page, r.getPageCount() - 1))) {

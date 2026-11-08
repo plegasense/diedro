@@ -890,7 +890,7 @@ bool layoutCam(const std::string& path, const Meta& meta, Drawing& d) {
     // tabla R(θ) cada 15° (acotación por coordenadas polares: decisión propia, ver NORMAS_G6.md)
     p0 = d.pos();
     const double tx0 = f.fx1 - 15 - 96, rowH = 4.8, ty1 = cyc + 0.5 * (12 * rowH + 14);
-    text(d, tx0, ty1 + 3, kTxt, T("Perfil: R en función de θ"));
+    text(d, tx0, ty1 + 4, kTxt, T("Perfil: R en función de θ"));
     const int rows = 12;
     for (int col = 0; col < 2; col++) {
         const double x0 = tx0 + col * 50;
@@ -1190,14 +1190,14 @@ bool layoutCamshaft(const std::string& path, const Meta& meta, Drawing& d) {
     if (!secs.empty()) {
         std::vector<std::vector<std::string>> rows = {{"x0", "x1", "Ø"}};
         for (auto& sc : secs) rows.push_back({fmt(sc.t0 - tmin), fmt(sc.t1 - tmin), fmt(2 * sc.r)});
-        text(d, tx, ty1 + 2, kTxt, T("Tramos del eje"));
+        text(d, tx, ty1 + 3.2, kTxt, T("Tramos del eje"));
         tx += grid(tx, ty1, {22, 22, 22}, rows) + 8;
     }
     if (common) {
         for (int col = 0; col < 2; col++) {
             std::vector<std::vector<std::string>> rows = {{"θ [°]", "R [mm]"}};
             for (int r = 0; r < 12; r++) { const int deg = (col * 12 + r) * 15; rows.push_back({std::to_string(deg), fmt(lobes[0].Rn[deg % 360])}); }
-            if (col == 0) text(d, tx, ty1 + 2, kTxt, T("Perfil de la leva: R en función de θ"));
+            if (col == 0) text(d, tx, ty1 + 3.2, kTxt, T("Perfil de la leva: R en función de θ"));
             tx += grid(tx, ty1, {20, 24}, rows) + 4;
         }
     } else {
@@ -1348,7 +1348,7 @@ bool layoutCam3D(const std::string& path, const Meta& meta, Drawing& d) {
     d.tag(p0, 1);
     p0 = d.pos();
     const double tx0 = f.fx1 - 15 - 96, rowH = 4.8, ty1 = cyc + 0.5 * (12 * rowH + 14);
-    text(d, tx0, ty1 + 3, kTxt, face ? T("Perfil: h en función de θ") : T("Perfil: z de la ranura en función de θ"));
+    text(d, tx0, ty1 + 4, kTxt, face ? T("Perfil: h en función de θ") : T("Perfil: z de la ranura en función de θ"));
     const int rows = 12;
     for (int col = 0; col < 2; col++) {
         const double x0 = tx0 + col * 50;
@@ -1681,7 +1681,7 @@ bool layoutPipe(const std::string& path, const Meta& meta, Drawing& d, bool cabl
     const double avail = (cys - ss * Ro - 14) - (f.zy0 - (planar ? 17 : 25));
     const double rowH = std::max(3.2, std::min(5.2, avail / (nVr + nBr + 2.5)));
     const double th = rowH > 4.2 ? 3.0 : 2.6;
-    double y = cys - ss * Ro - 14;
+    double y = cys - ss * Ro - 15;
     auto row = [&](double x0, const std::vector<std::string>& c, const std::vector<double>& w, bool hd) {
         double xx = x0; ln(d, x0, y, x0 + tabW, y, hd ? 0.35 : 0.18);
         for (size_t i = 0; i < c.size(); i++) { text(d, xx + 1.2, y - rowH + 0.9, th, c[i]); xx += w[i]; }
@@ -1692,7 +1692,7 @@ bool layoutPipe(const std::string& path, const Meta& meta, Drawing& d, bool cabl
     p0 = d.pos();
     {   // coordenadas de los vértices virtuales (cruce de ejes)
         const std::vector<double> w = {14, 30, 30, 30};
-        text(d, tx0, y + 1, th, T("Vértices (intersección de ejes)")); const double yt = y;
+        text(d, tx0, y + 1.9, th, T("Vértices (intersección de ejes)")); const double yt = y;
         row(tx0, {"Pt", "X", "Y", "Z"}, w, true);
         for (size_t i = 0; i < V.size(); i++) row(tx0, {std::to_string(i + 1), fmt(cz(V[i].X() - P0.X())), fmt(cz(V[i].Y() - P0.Y())), fmt(cz(V[i].Z() - P0.Z()))}, w, false);
         vbar(tx0, w, yt, y);
@@ -1700,7 +1700,7 @@ bool layoutPipe(const std::string& path, const Meta& meta, Drawing& d, bool cabl
     y -= rowH * 1.6;
     {   // tabla de curvado
         const std::vector<double> w = {14, 24, 22, 22, 22};
-        text(d, tx0, y + 1, th, T("Tabla de curvado")); const double yt = y;
+        text(d, tx0, y + 1.9, th, T("Tabla de curvado")); const double yt = y;
         row(tx0, {"N.°", "L", "A [°]", "B [°]", "R"}, w, true);
         for (size_t i = 0; i < bd.size(); i++) row(tx0, {std::to_string(i + 1), fmt(bd[i].L), fmt1(bd[i].ang * 180 / kPi), fmt1(bd[i].rot * 180 / kPi), fmt(bd[i].R)}, w, false);
         row(tx0, {T("fin"), fmt(Llast), "", "", ""}, w, false);
@@ -1999,7 +1999,7 @@ bool layoutHarness(const std::string& path, const Meta& meta, Drawing& d) {
     d.tag(p0, 3);
     const double avail = (cys - ss * Ro - 14) - (f.zy0 - (planar ? 17 : 25));
     const double rowH = std::max(3.2, std::min(5.2, avail / (nVr + nBr + 2.5))), th = rowH > 4.2 ? 3.0 : 2.6;
-    double y = cys - ss * Ro - 14;
+    double y = cys - ss * Ro - 15;
     auto row = [&](double x0, const std::vector<std::string>& c, const std::vector<double>& w, bool hd) {
         double xx = x0; ln(d, x0, y, x0 + tabW, y, hd ? 0.35 : 0.18);
         for (size_t i = 0; i < c.size(); i++) { text(d, xx + 1.2, y - rowH + 0.9, th, c[i]); xx += w[i]; }
@@ -2010,7 +2010,7 @@ bool layoutHarness(const std::string& path, const Meta& meta, Drawing& d) {
     p0 = d.pos();
     {
         const std::vector<double> w = {14, 30, 30, 30};
-        text(d, tx0, y + 1, th, T("Nodos (cruce de ejes)")); const double yt = y;
+        text(d, tx0, y + 1.9, th, T("Nodos (cruce de ejes)")); const double yt = y;
         row(tx0, {"Pt", "X", "Y", "Z"}, w, true);
         for (size_t i = 0; i < order.size(); i++) { const gp_Pnt& q = nodes[order[i]]; row(tx0, {std::to_string(i + 1), fmt(cz(q.X() - P0.X())), fmt(cz(q.Y() - P0.Y())), fmt(cz(q.Z() - P0.Z()))}, w, false); }
         vbar(tx0, w, yt, y);
@@ -2018,7 +2018,7 @@ bool layoutHarness(const std::string& path, const Meta& meta, Drawing& d) {
     y -= rowH * 1.6;
     {
         const std::vector<double> w = {14, 22, 22, 24, 22};
-        text(d, tx0, y + 1, th, T("Ramales")); const double yt = y;
+        text(d, tx0, y + 1.9, th, T("Ramales")); const double yt = y;
         row(tx0, {"R", T("De nodo"), T("A nodo"), "L", T("curvas")}, w, true);
         for (size_t i = 0; i < brs.size(); i++) row(tx0, {std::to_string(i + 1), std::to_string(num[brs[i].n0] + 1), std::to_string(num[brs[i].n1] + 1), fmt(brs[i].len), std::to_string(brs[i].bends)}, w, false);
         vbar(tx0, w, yt, y);
@@ -2038,7 +2038,8 @@ static const char* kDiscAlt[7] = {"", "Vuelve a exportar desde tu CAD en STEP (A
     "Usa el modelo 3D como referencia o un plano con perfiles y secciones.", "Divide el conjunto en subconjuntos y exporta cada uno."};
 std::vector<std::string> discardText(const Classification& c, const Meta& meta) {   // aviso para la app: {título, motivo, alternativa, detalle}
     const int k = c.discard >= 1 && c.discard <= 6 ? c.discard : 1;
-    return {tr("PIEZA FUERA DE ALCANCE: NO SE GENERA PLANO", meta.lang), tr(kDiscWhy[k], meta.lang), tr(kDiscAlt[k], meta.lang), c.reason};
+    const std::string& L = meta.langUi.empty() ? meta.lang : meta.langUi;   // la app muestra cualquier alfabeto
+    return {tr("PIEZA FUERA DE ALCANCE: NO SE GENERA PLANO", L), tr(kDiscWhy[k], L), tr(kDiscAlt[k], L), c.reason};
 }
 Drawing layoutDiscard(const Classification& c, const Meta& meta, const std::string& path) {
     Drawing d; d.sheetName = "A4"; d.sheetW = 297; d.sheetH = 210; d.kind = "discard"; d.label = "G15";
