@@ -1168,7 +1168,8 @@ public class MainActivity extends Activity {
             File st = new File(getCacheDir(), "in.proj");
             boolean gotStep = false;
             while ((e = z.getNextEntry()) != null) {
-                if (e.getName().equals("project.json")) { ByteArrayOutputStream b = new ByteArrayOutputStream(); copy(z, b); j = new org.json.JSONObject(b.toString("UTF-8")); }
+                if (e.getName().equals("project.json")) { ByteArrayOutputStream b = new ByteArrayOutputStream(); byte[] bf = new byte[8192]; int k; while ((k = z.read(bf)) > 0) { b.write(bf, 0, k); if (b.size() > (1 << 20)) return false; }   // tope 1 MB: un .diedro ajeno no agota la memoria
+                     j = new org.json.JSONObject(b.toString("UTF-8")); }
                 else if (e.getName().equals("model.step")) { try (OutputStream o = new FileOutputStream(st)) { copy(z, o); } gotStep = true; }
             }
             if (j == null || !gotStep) return false;
@@ -1178,7 +1179,7 @@ public class MainActivity extends Activity {
             if (t != null) for (java.util.Iterator<String> it = t.keys(); it.hasNext(); ) { String k = it.next(); nt.put(k, t.getString(k)); }
             java.util.ArrayList<String> ne = new java.util.ArrayList<>();
             org.json.JSONArray ea = j.optJSONArray("ediciones");
-            if (ea != null) for (int i = 0; i < ea.length(); i++) ne.add(ea.getString(i));
+            if (ea != null) for (int i = 0; i < Math.min(ea.length(), 20000); i++) ne.add(ea.getString(i));
             String nm = j.optString("modelo", "pieza.step");
             File ok = new File(getCacheDir(), "in.step"); ok.delete(); if (!st.renameTo(ok)) return false;
             step = ok;

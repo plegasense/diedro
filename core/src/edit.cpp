@@ -28,7 +28,11 @@ std::vector<std::string> split(const std::string& s) {
     }
     return r;
 }
-double num(const std::vector<std::string>& f, size_t i) { return i < f.size() ? std::atof(f[i].c_str()) : 0; }
+double num(const std::vector<std::string>& f, size_t i) {   // valores de un .diedro ajeno: sin NaN/inf ni magnitudes absurdas
+    if (i >= f.size()) return 0;
+    const double v = std::atof(f[i].c_str());
+    return std::isfinite(v) ? std::max(-1e6, std::min(1e6, v)) : 0;
+}
 
 double tw(const std::string& s, double h) {
     double w = 0;
