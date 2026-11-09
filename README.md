@@ -6,4 +6,4 @@ App Android gratuita y **100 % offline** que genera planos de fabricación (vist
 - Privacidad: `PRIVACY.md`.
 - Compilación: `BUILD.md`.
 
-Estructura: `core/` (núcleo C++ con OpenCASCADE), `android/` (interfaz Java + JNI), `visor/app/` (visor 3D Flutter embebido), `i18n/` (22 idiomas).
+Estructura: `core/` (núcleo C++ con OpenCASCADE), `android/` (interfaz Java + JNI), `visor/app/` (visor 3D Flutter embebido), `i18n/` (21 idiomas).

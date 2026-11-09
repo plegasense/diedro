@@ -5,7 +5,7 @@ Contacto: plegasense@gmail.com
 Componentes de terceros:
 - Open CASCADE Technology 7.9.x — LGPL 2.1 con excepción OCCT (https://dev.opencascade.org). Enlazado estáticamente y sin modificar;
   el código fuente de Diedro permite reenlazar con otra versión de OCCT.
-- osifont (variante osifont-gpl2fe, subconjunto) — GNU GPL v2 con excepción de fuente: los documentos (PDF) que incrustan la fuente
+- osifont (variante osifont-lgpl3fe, subconjunto, con 7 glifos propios) — GNU LGPL v3 con excepción de fuente GPL: los documentos (PDF) que incrustan la fuente
   no quedan cubiertos por la GPL por ello. Fuente: https://hikikomori82.github.io/osifont/
 - Noto Sans / Noto Sans CJK (contornos vectoriales para ja, ko, zh, th, hi) — SIL Open Font License 1.1.
 - LLVM libc++ (NDK) — Apache License 2.0 con excepción LLVM.

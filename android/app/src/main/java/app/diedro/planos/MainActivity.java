@@ -266,7 +266,7 @@ public class MainActivity extends Activity {
         box.addView(Ui.text(this, "Diedro", 22, Ui.TEXT, true));
         String txt = t("Diedro es software libre (GNU GPL v3 o posterior), sin garantía. Funciona totalmente sin conexión: no tiene permiso de Internet, no recopila ni envía ningún dato. Los archivos y ajustes se guardan solo en este dispositivo.")
             + "\n\nThis product includes Open CASCADE Technology (https://dev.opencascade.org), licensed under LGPL 2.1 with the Open CASCADE exception; linked statically."
-            + "\n\nFont osifont: GNU GPL v2 with font exception (https://hikikomori82.github.io/osifont/). Documents that embed it are not covered by the GPL because of it."
+            + "\n\nFont osifont: GNU LGPL v3 with GPL font exception (https://hikikomori82.github.io/osifont/). Documents that embed it are not covered by the GPL because of it."
             + "\n\nC++ runtime (LLVM libc++): Apache License 2.0 with LLVM exception."
             + "\n\nFlutter, Dart and Flutter packages: BSD-3-Clause and other licences (Copyright The Flutter and Dart authors)."
             + "\n\n" + t("Código fuente y texto completo de las licencias: archivos LICENSE y NOTICE del proyecto.");
@@ -1163,7 +1163,7 @@ public class MainActivity extends Activity {
         try (java.util.zip.ZipInputStream z = new java.util.zip.ZipInputStream(getContentResolver().openInputStream(u))) {
             java.util.zip.ZipEntry e;
             org.json.JSONObject j = null;
-            File st = new File(getCacheDir(), "in.step");
+            File st = new File(getCacheDir(), "in.proj");
             boolean gotStep = false;
             while ((e = z.getNextEntry()) != null) {
                 if (e.getName().equals("project.json")) { ByteArrayOutputStream b = new ByteArrayOutputStream(); copy(z, b); j = new org.json.JSONObject(b.toString("UTF-8")); }
@@ -1171,7 +1171,8 @@ public class MainActivity extends Activity {
             }
             if (j == null || !gotStep) return false;
             if (!j.optString("sha256").equals(sha256(st))) { Ui.snack(rootFrame, t("El proyecto está dañado (huella SHA-256 distinta)"), true); return false; }
-            step = st;
+            File ok = new File(getCacheDir(), "in.step"); ok.delete(); if (!st.renameTo(ok)) return false;
+            step = ok;
             stepName = j.optString("modelo", "pieza.step");
             title.setText(j.optString("pieza")); partNo.setText(j.optString("plano")); material.setText(j.optString("material")); tol.setText(j.optString("toleranciaGeneral"));
             tols.clear();
@@ -1233,6 +1234,14 @@ public class MainActivity extends Activity {
         try (android.database.Cursor c = getContentResolver().query(u, null, null, null, null)) {
             if (c != null && c.moveToFirst()) { String n = c.getString(c.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME)); if (n != null && !n.isEmpty()) name = n; }
         } catch (Exception ignored) {}
+        if (name.toLowerCase().endsWith(".diedro")) {   // un proyecto se valida antes de tocar el modelo actual
+            if (!readProject(u)) { Ui.snack(rootFrame, t("Proyecto Diedro no válido"), true); return; }
+            headTitle.setText(stepName);
+            pdf = null; zoom.setBitmap(null);
+            Ui.swap(work, home, true);
+            generate();
+            return;
+        }
         try {
             File tmp = new File(getCacheDir(), "in.tmp"), dst = new File(getCacheDir(), "in.step");
             try (InputStream in = getContentResolver().openInputStream(u); OutputStream out = new FileOutputStream(tmp)) {
@@ -1243,14 +1252,6 @@ public class MainActivity extends Activity {
             step = dst;   // solo si la copia terminó bien
         } catch (Exception e) {
             Ui.snack(rootFrame, t("No se pudo leer el archivo:") + " " + e.getMessage(), true);
-            return;
-        }
-        if (name.toLowerCase().endsWith(".diedro")) {
-            if (!readProject(u)) { Ui.snack(rootFrame, t("Proyecto Diedro no válido"), true); return; }
-            headTitle.setText(stepName);
-            pdf = null; zoom.setBitmap(null);
-            Ui.swap(work, home, true);
-            generate();
             return;
         }
         tols.clear();
