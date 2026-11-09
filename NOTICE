@@ -9,7 +9,7 @@ Componentes de terceros:
   no quedan cubiertos por la GPL por ello. Fuente: https://hikikomori82.github.io/osifont/
 - Noto Sans / Noto Sans CJK (contornos vectoriales para ja, ko, zh, th, hi) — SIL Open Font License 1.1 (texto en LICENSES/OFL-1.1-Noto.txt). Copyright 2012 Google Inc. y The Noto Project Authors; Adobe Source Han Sans, Copyright Adobe.
 - LLVM libc++ (NDK) — Apache License 2.0 con excepción LLVM.
-- Flutter, Dart y paquetes de pub — BSD-3-Clause y otras (ver NOTICES de Flutter).
+- Flutter, Dart y paquetes de pub — BSD-3-Clause, MIT, Apache 2.0 y otras permisivas; textos y avisos completos en LICENSES/THIRD_PARTY_NOTICES-flutter.txt (el mismo fichero va dentro del APK).
 - Plantilla DXF R2000 (core/src/dxf_skel.inc) — derivada de la salida de ezdxf, MIT License, Copyright (c) 2020 Manfred Moitzi (https://github.com/mozman/ezdxf).
 
 ezdxf — MIT License

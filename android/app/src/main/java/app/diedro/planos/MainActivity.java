@@ -270,7 +270,7 @@ public class MainActivity extends Activity {
             + "\n\nC++ runtime (LLVM libc++): Apache License 2.0 with LLVM exception."
             + "\n\nNoto Sans / Noto Sans CJK (glyph outlines for ja, ko, zh, th, hi): Copyright 2012 Google Inc. and The Noto Project Authors; Adobe Source Han Sans: Copyright Adobe. SIL Open Font License 1.1 (https://openfontlicense.org)."
             + "\n\nDXF template derived from ezdxf: MIT License, Copyright (c) 2020 Manfred Moitzi."
-            + "\n\nFlutter, Dart and Flutter packages: BSD-3-Clause and other licences (Copyright The Flutter and Dart authors)."
+            + "\n\nFlutter, Dart and Flutter packages: BSD-3-Clause, MIT, Apache-2.0 and other permissive licences (Copyright The Flutter and Dart authors); full notices in LICENSES/THIRD_PARTY_NOTICES-flutter.txt of the repository."
             + "\n\n" + "Source code and full licence texts (files LICENSE, NOTICE and LICENSES): https://github.com/plegasense/diedro";
         TextView tv = Ui.text(this, txt, 13, Ui.TEXT, false);
         tv.setPadding(0, dp(14), 0, 0);
