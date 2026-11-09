@@ -1,0 +1,9 @@
+osifont (variante osifont-lgpl3fe.ttf) — https://github.com/hikikomori82/osifont
+Licencia: GNU Lesser General Public License v3 (LICENSES/LGPL-3.0.txt) con la excepción de fuente de la GPL:
+«this font does not by itself cause the resulting document to be covered by the GNU General Public License»
+(los documentos que incrustan la fuente no quedan cubiertos por la GPL por ello).
+Autor: osifont project (hikikomori82) y colaboradores. Diedro incrusta un subconjunto y añade 7 glifos propios
+(⌴ ↑ → ↓ ⤢ µ Ώ), generados con core/tools/gen_font.py a partir de la fuente original.
+
+osifont (variant osifont-lgpl3fe.ttf), by the osifont project and contributors. LGPL v3 with the GPL font exception.
+Diedro embeds a subset and adds 7 glyphs of its own (see core/tools/gen_font.py).
