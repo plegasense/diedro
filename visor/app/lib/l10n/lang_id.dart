@@ -763,7 +763,7 @@ const Map<String, String> kLang_id = {
   '{n} caras': '{n} face',
   'Pieza;Cantidad;Largo ({u});Ancho ({u});Alto ({u});Volumen ({u}³)': 'Part;Jumlah;Panjang ({u});Lebar ({u});Tinggi ({u});Volume ({u}³)',
   'Lista de materiales copiada (pégala en Excel)': 'Daftar material disalin (tempel di Excel)',
-  'FRONT': 'DEPAN',
+  'FRENTE': 'DEPAN',
   'POST': 'BLKG',
   'DER': 'KANAN',
   'IZQ': 'KIRI',

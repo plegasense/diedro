@@ -63,11 +63,11 @@ Profile analyzeStep(const std::string& path) {
     Profile out;
     TopoDS_Shape shape;
     if (!readShapeCached(path, shape)) { out.error = "No se pudo leer el archivo STEP."; return out; }
-    if (shape.IsNull()) { out.error = "El STEP no contiene ninguna forma sólida."; return out; }
+    if (shape.IsNull()) { out.error = "El STEP no contiene ningún sólido."; return out; }
 
     std::vector<TopoDS_Face> faces;
     for (TopExp_Explorer e(shape, TopAbs_FACE); e.More(); e.Next()) faces.push_back(TopoDS::Face(e.Current()));
-    if (faces.empty()) { out.error = "El STEP no contiene caras."; return out; }
+    if (faces.empty()) { out.error = "El STEP no contiene ningún sólido."; return out; }
 
     // eje: el candidato (eje de cilindro/cono) con mayor área de superficies de revolución coaxiales
     std::vector<double> area(faces.size());

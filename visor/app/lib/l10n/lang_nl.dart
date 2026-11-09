@@ -763,7 +763,7 @@ const Map<String, String> kLang_nl = {
   '{n} caras': '{n} vlakken',
   'Pieza;Cantidad;Largo ({u});Ancho ({u});Alto ({u});Volumen ({u}³)': 'Onderdeel;Aantal;Lengte ({u});Breedte ({u});Hoogte ({u});Volume ({u}³)',
   'Lista de materiales copiada (pégala en Excel)': 'Stuklijst gekopieerd (plak hem in Excel)',
-  'FRONT': 'VOOR',
+  'FRENTE': 'VOOR',
   'POST': 'ACHTER',
   'DER': 'RECHTS',
   'IZQ': 'LINKS',

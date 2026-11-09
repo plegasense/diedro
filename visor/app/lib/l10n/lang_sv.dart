@@ -763,7 +763,7 @@ const Map<String, String> kLang_sv = {
   '{n} caras': '{n} ytor',
   'Pieza;Cantidad;Largo ({u});Ancho ({u});Alto ({u});Volumen ({u}³)': 'Del;Antal;Längd ({u});Bredd ({u});Höjd ({u});Volym ({u}³)',
   'Lista de materiales copiada (pégala en Excel)': 'Dellistan kopierad (klistra in den i Excel)',
-  'FRONT': 'FRAM',
+  'FRENTE': 'FRAM',
   'POST': 'BAK',
   'DER': 'HÖ',
   'IZQ': 'VÄ',

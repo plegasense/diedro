@@ -750,7 +750,7 @@ const Map<String, String> kLang_ja = {
   '{n} caras': '{n} 面',
   'Pieza;Cantidad;Largo ({u});Ancho ({u});Alto ({u});Volumen ({u}³)': 'パーツ;数量;長さ ({u});幅 ({u});高さ ({u});体積 ({u}³)',
   'Lista de materiales copiada (pégala en Excel)': '部品表をコピーしました (Excel に貼り付けできます)',
-  'FRONT': '前',
+  'FRENTE': '前',
   'POST': '後',
   'DER': '右',
   'IZQ': '左',

@@ -750,7 +750,7 @@ const Map<String, String> kLang_tr = {
   '{n} caras': '{n} yüz',
   'Pieza;Cantidad;Largo ({u});Ancho ({u});Alto ({u});Volumen ({u}³)': 'Parça;Adet;Uzunluk ({u});Genişlik ({u});Yükseklik ({u});Hacim ({u}³)',
   'Lista de materiales copiada (pégala en Excel)': "Malzeme listesi kopyalandı (Excel'e yapıştırın)",
-  'FRONT': 'ÖN',
+  'FRENTE': 'ÖN',
   'POST': 'ARKA',
   'DER': 'SAĞ',
   'IZQ': 'SOL',

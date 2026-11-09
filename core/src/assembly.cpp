@@ -359,7 +359,7 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
     if (infos.empty()) { err = "El conjunto no contiene piezas."; return out; }
     std::vector<std::string> warns;
     const size_t kMaxInst = 400, kMaxParts = 40;
-    if (refs.size() > kMaxInst) { err = "Conjunto demasiado grande para esta versión (" + std::to_string(refs.size()) + " piezas colocadas)."; return out; }
+    if (refs.size() > kMaxInst) { err = "Conjunto demasiado grande para esta versión (" + std::to_string(refs.size()) + " piezas)."; return out; }
 
     if (dbg) std::fprintf(stderr, "ASM lectura %.1fs piezas=%zu inst=%zu\n", secs(), infos.size(), refs.size());
     // vistas con líneas visibles por instancia (HLR con todas las piezas: se ocultan entre sí)
@@ -884,7 +884,7 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
             else facesDone += fm.Extent();
         }
         Meta pm = meta;
-        pm.title = std::to_string(pi.pos) + " · " + (pi.name.empty() ? std::string("Pieza ") + std::to_string(pi.pos) : pi.name);  // sin el nombre del conjunto: el campo del cajetín es corto
+        pm.title = std::to_string(pi.pos) + " · " + (pi.name.empty() ? T("Pieza") + " " + std::to_string(pi.pos) : pi.name);  // sin el nombre del conjunto: el campo del cajetín es corto
         if (pm.title.size() > 34) { size_t k = 31; while (k > 0 && (static_cast<unsigned char>(pm.title[k]) & 0xC0) == 0x80) k--; pm.title = pm.title.substr(0, k) + "..."; }
         pm.partNo.clear();
         pm.material = pi.mat;
@@ -905,7 +905,7 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
             }
             Classification dcl; if (ok) dcl = classifyStep(f);
             if (!ok) r.e = "No se pudo extraer la pieza.";
-            else if (dcl.error.empty() && dcl.discard >= 3 && dcl.discard <= 5) { { std::string nm = pm.title; std::replace(nm.begin(), nm.end(), '/', '-'); r.d = layoutDiscard(dcl, pm, nm); } r.d.warnings.push_back(dcl.reason); }   // G15: solo esta pieza se descarta; el resto del conjunto se dibuja
+            else if (dcl.error.empty() && dcl.discard >= 3 && dcl.discard <= 5) { { std::string nm = pm.title; std::replace(nm.begin(), nm.end(), '/', '-'); r.d = layoutDiscard(dcl, pm, nm); } r.d.warnings.push_back(reasonTr(dcl.reason, pm.lang)); }   // G15: solo esta pieza se descarta; el resto del conjunto se dibuja
             else if (camOnly) { const auto tc = std::chrono::steady_clock::now(); Profile gp; const Classification cl = classifyStep(f); bool okc = cl.error.empty() && (cl.group == 6 || cl.group == 0) && layoutGear(f, pm, gp, r.d); if (!okc) { gCamshaftMinLobes = 1; okc = layoutCamshaft(f, pm, r.d); gCamshaftMinLobes = 2; } if (!okc) r.d = drawPart(f, pm, r.e); if (std::getenv("DIEDRO_DBG")) std::fprintf(stderr, "ASM pesada %s ok=%d %.1fs\n", f.c_str(), (int)okc, std::chrono::duration<double>(std::chrono::steady_clock::now() - tc).count()); }
             else { auto t0 = std::chrono::steady_clock::now(); r.d = drawPart(f, pm, r.e); if (std::getenv("DIEDRO_DBG")) std::fprintf(stderr, "ASM drawPart %s %.1fs\n", f.c_str(), std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count()); }
             if (!std::getenv("DIEDRO_KEEP")) std::remove(f.c_str());

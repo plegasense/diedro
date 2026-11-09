@@ -750,7 +750,7 @@ const Map<String, String> kLang_zh = {
   '{n} caras': '{n} 个面',
   'Pieza;Cantidad;Largo ({u});Ancho ({u});Alto ({u});Volumen ({u}³)': '零件;数量;长 ({u});宽 ({u});高 ({u});体积 ({u}³)',
   'Lista de materiales copiada (pégala en Excel)': '零件清单已复制（可粘贴到 Excel）',
-  'FRONT': '前',
+  'FRENTE': '前',
   'POST': '后',
   'DER': '右',
   'IZQ': '左',

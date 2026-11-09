@@ -763,7 +763,7 @@ const Map<String, String> kLang_tw = {
   '{n} caras': '{n} 個面',
   'Pieza;Cantidad;Largo ({u});Ancho ({u});Alto ({u});Volumen ({u}³)': '零件;數量;長 ({u});寬 ({u});高 ({u});體積 ({u}³)',
   'Lista de materiales copiada (pégala en Excel)': '已複製零件清單（可貼到 Excel）',
-  'FRONT': '前',
+  'FRENTE': '前',
   'POST': '後',
   'DER': '右',
   'IZQ': '左',

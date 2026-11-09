@@ -856,7 +856,7 @@ public class MainActivity extends Activity {
             dir.mkdirs();
             String r = Native.exportPages(dir.getPath(), name, ops, sel, split);
             runOnUiThread(() -> {
-                if (r.startsWith("ERROR")) { Ui.snack(rootFrame, r, true); return; }
+                if (r.startsWith("ERROR")) { Ui.snack(rootFrame, errTr(r.substring(5).trim()), true); return; }
                 pendingExport = r.trim().split("\n");
                 pendingExt = ext;
                 if (pendingExport.length > 1) startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), EXPORTDIR);
@@ -1049,7 +1049,7 @@ public class MainActivity extends Activity {
             LinearLayout e = card();
             e.setBackground(Ui.outline(this, Ui.SURFACE, Ui.RED, 18));
             e.addView(Ui.text(this, t("No se pudo generar el plano"), 15, Ui.RED, true));
-            TextView m = Ui.text(this, r.substring(5).trim(), 13, Ui.TEXT, false);
+            TextView m = Ui.text(this, errTr(r.substring(5).trim()), 13, Ui.TEXT, false);
             m.setPadding(0, dp(6), 0, 0);
             e.addView(m);
             results.addView(e);
@@ -1370,7 +1370,7 @@ public class MainActivity extends Activity {
         }
         File dst = new File(getCacheDir(), "in.step");
         dst.delete();
-        if (!tmp.renameTo(dst)) { tmp.delete(); Ui.snack(rootFrame, t("No se pudo leer el archivo:") + " sin espacio", true); return; }
+        if (!tmp.renameTo(dst)) { tmp.delete(); Ui.snack(rootFrame, t("No hay espacio suficiente en el dispositivo."), true); return; }
         step = dst;   // solo si la copia terminó bien
         tols.clear();
         ed.reset();
@@ -1450,5 +1450,18 @@ public class MainActivity extends Activity {
     @Override public void onBackPressed() {
         if (work.getVisibility() == View.VISIBLE) Ui.swap(home, work, false);
         else super.onBackPressed();
+    }
+
+    /** Traduce el error del motor; si lleva un número, lo sustituye por {0}. */
+    private String errTr(String m) {
+        String o = t(m);
+        if (!o.equals(m)) return o;
+        java.util.regex.Matcher x = java.util.regex.Pattern.compile("\\d+").matcher(m);
+        if (x.find()) {
+            String k = m.substring(0, x.start()) + "{0}" + m.substring(x.end());
+            String v = t(k);
+            if (!v.equals(k)) return v.replace("{0}", x.group());
+        }
+        return m;
     }
 }

@@ -763,7 +763,7 @@ const Map<String, String> kLang_cs = {
   '{n} caras': 'Ploch: {n}',
   'Pieza;Cantidad;Largo ({u});Ancho ({u});Alto ({u});Volumen ({u}³)': 'Díl;Množství;Délka ({u});Šířka ({u});Výška ({u});Objem ({u}³)',
   'Lista de materiales copiada (pégala en Excel)': 'Kusovník zkopírován (vložte jej do Excelu)',
-  'FRONT': 'PŘED',
+  'FRENTE': 'PŘED',
   'POST': 'ZAD',
   'DER': 'PRAV',
   'IZQ': 'LEV',

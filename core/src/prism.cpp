@@ -228,7 +228,7 @@ void viewPt(const Part& P, int view, const double q[3], double& u, double& w) {
 bool analyze(const std::string& path, Part& P, std::string& err) {
     TopoDS_Shape shape;
     if (!readShapeCached(path, shape)) { err = "No se pudo leer el archivo STEP."; return false; }
-    if (shape.IsNull()) { err = "El STEP no contiene ninguna forma sólida."; return false; }
+    if (shape.IsNull()) { err = "El STEP no contiene ningún sólido."; return false; }
     for (TopExp_Explorer e(shape, TopAbs_SOLID); e.More(); e.Next()) P.nSolids++;
     if (!P.nSolids) { err = "El STEP no contiene ningún sólido."; return false; }
     int nF0 = 0; for (TopExp_Explorer fe(shape, TopAbs_FACE); fe.More(); fe.Next()) nF0++;

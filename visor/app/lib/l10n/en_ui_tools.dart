@@ -69,7 +69,7 @@ const Map<String, String> kEn_ui_tools = {
   '{n} caras': '{n} faces',
   'Pieza;Cantidad;Largo ({u});Ancho ({u});Alto ({u});Volumen ({u}³)': 'Part;Quantity;Length ({u});Width ({u});Height ({u});Volume ({u}³)',
   'Lista de materiales copiada (pégala en Excel)': 'Parts list copied (paste it into Excel)',
-  'FRONT': 'FRONT',
+  'FRENTE': 'FRONT',
   'POST': 'BACK',
   'DER': 'RIGHT',
   'IZQ': 'LEFT',

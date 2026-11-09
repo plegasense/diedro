@@ -763,7 +763,7 @@ const Map<String, String> kLang_vi = {
   '{n} caras': '{n} mặt',
   'Pieza;Cantidad;Largo ({u});Ancho ({u});Alto ({u});Volumen ({u}³)': 'Chi tiết;Số lượng;Dài ({u});Rộng ({u});Cao ({u});Thể tích ({u}³)',
   'Lista de materiales copiada (pégala en Excel)': 'Đã sao chép danh sách vật tư (dán vào Excel)',
-  'FRONT': 'TRƯỚC',
+  'FRENTE': 'TRƯỚC',
   'POST': 'SAU',
   'DER': 'PHẢI',
   'IZQ': 'TRÁI',

@@ -2035,6 +2035,19 @@ bool layoutHarness(const std::string& path, const Meta& meta, Drawing& d) {
 static const char* kDiscWhy[7] = {"", "No se pudo leer el archivo STEP (vacío, corrupto o no es un STEP).", "El archivo no contiene ningún sólido (solo superficies o nada).",
     "Chapa plegada o lámina: necesita desarrollo plano y tabla de plegados.", "Pieza embutida de pared fina (lata, cubilete).",
     "Forma libre u orgánica: superficies no analíticas que no se pueden acotar de forma fiable.", "Conjunto con más de 400 piezas."};
+// motivo del descarte (lo escribe classify.cpp en español): se traduce con plantillas de la tabla
+std::string reasonTr(const std::string& r, const std::string& lang) {
+    double a = 0, b = 0; int n = 0;
+    auto sub = [&](const char* es, std::initializer_list<std::string> v) { std::string t = tr(es, lang); int i = 0; for (auto& x : v) { std::string k = "{" + std::to_string(i++) + "}"; size_t p = t.find(k); if (p != std::string::npos) t.replace(p, k.size(), x); } return t; };
+    auto f = [](double v, const char* fm) { char q[32]; std::snprintf(q, sizeof q, fm, v); return std::string(q); };
+    if (std::sscanf(r.c_str(), "pieza embutida: pared %lf mm, Ø%lf (revo", &a, &b) == 2) return sub("pieza embutida: pared {0} mm, Ø{1} (revolución con acuerdos concéntricos)", {f(a, "%.2f"), f(b, "%.0f")});
+    if (std::sscanf(r.c_str(), "pieza embutida: pared %lf mm, Ø%lf con fondo", &a, &b) == 2) return sub("pieza embutida: pared {0} mm, Ø{1} con fondo cerrado", {f(a, "%.2f"), f(b, "%.0f")});
+    if (std::sscanf(r.c_str(), "chapa de %lf mm con plegados", &a) == 1) return sub("chapa de {0} mm con plegados concéntricos", {f(a, "%.2f")});
+    if (std::sscanf(r.c_str(), "lámina de %lf mm", &a) == 1) return sub("lámina de {0} mm", {f(a, "%.2f")});
+    if (std::sscanf(r.c_str(), "forma libre: %lf%% del", &a) == 1) return sub("forma libre: {0}% del área son superficies no analíticas", {f(a, "%.0f")});
+    if (std::sscanf(r.c_str(), "%d piezas", &n) == 1) return sub("{0} piezas", {std::to_string(n)});
+    return r;
+}
 static const char* kDiscAlt[7] = {"", "Vuelve a exportar desde tu CAD en STEP (AP203, AP214 o AP242).", "Cierra las superficies y exporta un sólido.",
     "Usa una herramienta de chapa (desarrollo plano y plegados).", "Se necesita plano de embutición y de utillaje; Diedro no lo genera.",
     "Usa el modelo 3D como referencia o un plano con perfiles y secciones.", "Divide el conjunto en subconjuntos y exporta cada uno."};
@@ -2075,7 +2088,7 @@ Drawing layoutDiscard(const Classification& c, const Meta& meta, const std::stri
         double a = glyphs(kk, 20, y, 5, ok);
         if (ok) y -= a + 6; else { for (auto& l : wrap(tr(kk, meta.lang), 80)) { d.texts.push_back({20, y, 5, l}); y -= 8; } y -= 6; }
     }
-    if (!c.reason.empty()) { y -= 8; d.texts.push_back({20, y, 3.5, c.reason}); }
+    if (!c.reason.empty()) { y -= 8; d.texts.push_back({20, y, 3.5, reasonTr(c.reason, meta.lang)}); }
     { const char* ft = "Diedro no inventa cotas: ante una pieza que no sabe dibujar bien, se detiene y avisa.";
       double a = glyphs(ft, 20, 18, 3, ok); if (!ok) d.texts.push_back({20, 18, 3, tr(ft, meta.lang)}); (void)a; }
     d.warnings.push_back(tr(kDiscWhy[k], meta.lang));

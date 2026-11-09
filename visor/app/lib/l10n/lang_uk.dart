@@ -763,7 +763,7 @@ const Map<String, String> kLang_uk = {
   '{n} caras': 'Граней: {n}',
   'Pieza;Cantidad;Largo ({u});Ancho ({u});Alto ({u});Volumen ({u}³)': 'Деталь;Кількість;Довжина ({u});Ширина ({u});Висота ({u});Об\'єм ({u}³)',
   'Lista de materiales copiada (pégala en Excel)': 'Перелік матеріалів скопійовано (вставте його в Excel)',
-  'FRONT': 'ПЕРЕД',
+  'FRENTE': 'ПЕРЕД',
   'POST': 'ЗАД',
   'DER': 'ПРАВ',
   'IZQ': 'ЛІВ',

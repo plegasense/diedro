@@ -10,6 +10,7 @@ namespace diedro {
 struct Classification;
 std::vector<std::string> discardText(const Classification& c, const Meta& meta);   // texto del aviso de descarte (app)
 Drawing layoutDiscard(const Classification& c, const Meta& meta, const std::string& path);   // G15: hoja de aviso
+std::string reasonTr(const std::string& reason, const std::string& lang);   // motivo de descarte traducido
 bool readShapeCached(const std::string& path, TopoDS_Shape& S);   // lectura STEP con caché de un fichero
 bool layoutSpring(const std::string& path, const Meta& meta, Drawing& d);
 extern bool gCamStrict;

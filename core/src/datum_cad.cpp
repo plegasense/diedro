@@ -755,7 +755,7 @@ DatumScene* datum_cad_open(const char* path, double rel_deflection) {
     }
     t0 = nowMs();
     if (!ok) {
-      g_error = "No se pudo leer el archivo (formato inválido o no soportado)";
+      g_error = "No se pudo leer el archivo STEP.";
       return nullptr;
     }
 

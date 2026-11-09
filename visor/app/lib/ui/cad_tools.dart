@@ -1331,7 +1331,7 @@ class ViewCube extends StatelessWidget {
 
   // Caras: nombre, normal en el mundo, vista (yaw, pitch).
   static final _faces = <(String, vm.Vector3, double, double)>[
-    ('FRONT', vm.Vector3(0, -1, 0), -1.5708, 0),
+    ('FRENTE', vm.Vector3(0, -1, 0), -1.5708, 0),
     ('POST', vm.Vector3(0, 1, 0), 1.5708, 0),
     ('DER', vm.Vector3(1, 0, 0), 0, 0),
     ('IZQ', vm.Vector3(-1, 0, 0), 3.1416, 0),

@@ -120,7 +120,7 @@ static Classification classifyStepRaw(const std::string& path) {
     rd.TransferRoots();
     TS("transfer");
     TopoDS_Shape shape = rd.OneShape();
-    if (shape.IsNull()) { C.error = "El STEP no contiene ninguna forma sólida."; C.group = 15; C.discard = 2; return C; }
+    if (shape.IsNull()) { C.error = "El STEP no contiene ningún sólido."; C.group = 15; C.discard = 2; return C; }
     int nSol = 0;
     for (TopExp_Explorer e(shape, TopAbs_SOLID); e.More(); e.Next()) nSol++;
     if (!nSol) { C.error = "El STEP no contiene ningún sólido."; C.group = 15; C.discard = 2; return C; }
@@ -157,7 +157,7 @@ static Classification classifyStepRaw(const std::string& path) {
         A += f.area; Ak[f.k] += f.area;
         fs.push_back(f);
     }
-    if (fs.empty() || A <= 0) { C.error = "El STEP no contiene caras."; return C; }
+    if (fs.empty() || A <= 0) { C.error = "El STEP no contiene ningún sólido."; return C; }
 
     Bnd_OBB ob;
     BRepBndLib::AddOBB(shape, ob, false, false, false);

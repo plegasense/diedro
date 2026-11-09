@@ -750,7 +750,7 @@ const Map<String, String> kLang_ko = {
   '{n} caras': '면 {n}개',
   'Pieza;Cantidad;Largo ({u});Ancho ({u});Alto ({u});Volumen ({u}³)': '부품;수량;길이({u});폭({u});높이({u});부피({u}³)',
   'Lista de materiales copiada (pégala en Excel)': '부품 목록을 복사했어요(Excel에 붙여넣으세요)',
-  'FRONT': '정면',
+  'FRENTE': '정면',
   'POST': '후면',
   'DER': '오른쪽',
   'IZQ': '왼쪽',

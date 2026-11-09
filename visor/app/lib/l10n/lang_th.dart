@@ -763,7 +763,7 @@ const Map<String, String> kLang_th = {
   '{n} caras': '{n} หน้า',
   'Pieza;Cantidad;Largo ({u});Ancho ({u});Alto ({u});Volumen ({u}³)': 'ชิ้นส่วน;จำนวน;ยาว ({u});กว้าง ({u});สูง ({u});ปริมาตร ({u}³)',
   'Lista de materiales copiada (pégala en Excel)': 'คัดลอกรายการวัสดุแล้ว (วางใน Excel ได้)',
-  'FRONT': 'หน้า',
+  'FRENTE': 'หน้า',
   'POST': 'หลัง',
   'DER': 'ขวา',
   'IZQ': 'ซ้าย',
