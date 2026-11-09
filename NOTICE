@@ -7,7 +7,7 @@ Componentes de terceros:
   el código fuente de Diedro permite reenlazar con otra versión de OCCT.
 - osifont (variante osifont-lgpl3fe, subconjunto, con 7 glifos propios) — GNU LGPL v3 con excepción de fuente GPL: los documentos (PDF) que incrustan la fuente
   no quedan cubiertos por la GPL por ello. Fuente: https://hikikomori82.github.io/osifont/
-- Noto Sans / Noto Sans CJK (contornos vectoriales para ja, ko, zh, th, hi) — SIL Open Font License 1.1.
+- Noto Sans / Noto Sans CJK (contornos vectoriales para ja, ko, zh, th, hi) — SIL Open Font License 1.1 (texto en LICENSES/OFL-1.1-Noto.txt). Copyright 2012 Google Inc. y The Noto Project Authors; Adobe Source Han Sans, Copyright Adobe.
 - LLVM libc++ (NDK) — Apache License 2.0 con excepción LLVM.
 - Flutter, Dart y paquetes de pub — BSD-3-Clause y otras (ver NOTICES de Flutter).
 - Plantilla DXF R2000 (core/src/dxf_skel.inc) — derivada de la salida de ezdxf, MIT License, Copyright (c) 2020 Manfred Moitzi (https://github.com/mozman/ezdxf).

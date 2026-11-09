@@ -268,8 +268,10 @@ public class MainActivity extends Activity {
             + "\n\nThis product includes Open CASCADE Technology (https://dev.opencascade.org), licensed under LGPL 2.1 with the Open CASCADE exception; linked statically."
             + "\n\nFont osifont: GNU LGPL v3 with GPL font exception (https://hikikomori82.github.io/osifont/). Documents that embed it are not covered by the GPL because of it."
             + "\n\nC++ runtime (LLVM libc++): Apache License 2.0 with LLVM exception."
+            + "\n\nNoto Sans / Noto Sans CJK (glyph outlines for ja, ko, zh, th, hi): Copyright 2012 Google Inc. and The Noto Project Authors; Adobe Source Han Sans: Copyright Adobe. SIL Open Font License 1.1 (https://openfontlicense.org)."
+            + "\n\nDXF template derived from ezdxf: MIT License, Copyright (c) 2020 Manfred Moitzi."
             + "\n\nFlutter, Dart and Flutter packages: BSD-3-Clause and other licences (Copyright The Flutter and Dart authors)."
-            + "\n\n" + t("Código fuente y texto completo de las licencias: archivos LICENSE y NOTICE del proyecto.");
+            + "\n\n" + "Source code and full licence texts (files LICENSE, NOTICE and LICENSES): https://github.com/plegasense/diedro";
         TextView tv = Ui.text(this, txt, 13, Ui.TEXT, false);
         tv.setPadding(0, dp(14), 0, 0);
         box.addView(tv);
@@ -1159,8 +1161,8 @@ public class MainActivity extends Activity {
         }
     }
 
-    private boolean readProject(Uri u) {
-        try (java.util.zip.ZipInputStream z = new java.util.zip.ZipInputStream(getContentResolver().openInputStream(u))) {
+    private boolean readProject(File src) {
+        try (java.util.zip.ZipInputStream z = new java.util.zip.ZipInputStream(new FileInputStream(src))) {
             java.util.zip.ZipEntry e;
             org.json.JSONObject j = null;
             File st = new File(getCacheDir(), "in.proj");
@@ -1171,16 +1173,20 @@ public class MainActivity extends Activity {
             }
             if (j == null || !gotStep) return false;
             if (!j.optString("sha256").equals(sha256(st))) { Ui.snack(rootFrame, t("El proyecto está dañado (huella SHA-256 distinta)"), true); return false; }
+            java.util.LinkedHashMap<String, String> nt = new java.util.LinkedHashMap<>();   // todo se lee antes de tocar el estado actual
+            org.json.JSONObject t = j.optJSONObject("tolerancias");
+            if (t != null) for (java.util.Iterator<String> it = t.keys(); it.hasNext(); ) { String k = it.next(); nt.put(k, t.getString(k)); }
+            java.util.ArrayList<String> ne = new java.util.ArrayList<>();
+            org.json.JSONArray ea = j.optJSONArray("ediciones");
+            if (ea != null) for (int i = 0; i < ea.length(); i++) ne.add(ea.getString(i));
+            String nm = j.optString("modelo", "pieza.step");
             File ok = new File(getCacheDir(), "in.step"); ok.delete(); if (!st.renameTo(ok)) return false;
             step = ok;
-            stepName = j.optString("modelo", "pieza.step");
+            stepName = nm;
             title.setText(j.optString("pieza")); partNo.setText(j.optString("plano")); material.setText(j.optString("material")); tol.setText(j.optString("toleranciaGeneral"));
-            tols.clear();
-            org.json.JSONObject t = j.optJSONObject("tolerancias");
-            if (t != null) for (java.util.Iterator<String> it = t.keys(); it.hasNext(); ) { String k = it.next(); tols.put(k, t.getString(k)); }
+            tols.clear(); tols.putAll(nt);
             ed.reset();
-            org.json.JSONArray ea = j.optJSONArray("ediciones");
-            if (ea != null) for (int i = 0; i < ea.length(); i++) ed.ops.add(ea.getString(i));
+            ed.ops.addAll(ne);
             return true;
         } catch (Exception ex) { return false; }
     }
@@ -1234,26 +1240,40 @@ public class MainActivity extends Activity {
         try (android.database.Cursor c = getContentResolver().query(u, null, null, null, null)) {
             if (c != null && c.moveToFirst()) { String n = c.getString(c.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME)); if (n != null && !n.isEmpty()) name = n; }
         } catch (Exception ignored) {}
+        final String nm = name;
+        final File tmp = new File(getCacheDir(), "in.tmp" + (++loadId));
+        final int my = loadId;
+        new Thread(() -> {   // la copia puede ser lenta (nube, archivos grandes): fuera del hilo de la interfaz
+            String err = null;
+            try (InputStream in = getContentResolver().openInputStream(u); OutputStream out = new FileOutputStream(tmp)) {
+                if (in == null) throw new IOException("sin datos");
+                copy(in, out);
+            } catch (Exception e) { err = e.getMessage(); tmp.delete(); }
+            final String fe = err;
+            runOnUiThread(() -> {
+                if (my != loadId) { tmp.delete(); return; }   // llegó otra apertura: esta ya no vale
+                if (fe != null) { Ui.snack(rootFrame, t("No se pudo leer el archivo:") + " " + fe, true); return; }
+                openLocal(tmp, nm);
+            });
+        }).start();
+    }
+    private int loadId;
+
+    private void openLocal(File tmp, String name) {
         if (name.toLowerCase().endsWith(".diedro")) {   // un proyecto se valida antes de tocar el modelo actual
-            if (!readProject(u)) { Ui.snack(rootFrame, t("Proyecto Diedro no válido"), true); return; }
+            boolean ok = readProject(tmp);
+            tmp.delete();
+            if (!ok) { Ui.snack(rootFrame, t("Proyecto Diedro no válido"), true); return; }
             headTitle.setText(stepName);
             pdf = null; zoom.setBitmap(null);
             Ui.swap(work, home, true);
             generate();
             return;
         }
-        try {
-            File tmp = new File(getCacheDir(), "in.tmp"), dst = new File(getCacheDir(), "in.step");
-            try (InputStream in = getContentResolver().openInputStream(u); OutputStream out = new FileOutputStream(tmp)) {
-                if (in == null) throw new IOException("sin datos");
-                copy(in, out);
-            }
-            if (!tmp.renameTo(dst)) throw new IOException("sin espacio");
-            step = dst;   // solo si la copia terminó bien
-        } catch (Exception e) {
-            Ui.snack(rootFrame, t("No se pudo leer el archivo:") + " " + e.getMessage(), true);
-            return;
-        }
+        File dst = new File(getCacheDir(), "in.step");
+        dst.delete();
+        if (!tmp.renameTo(dst)) { tmp.delete(); Ui.snack(rootFrame, t("No se pudo leer el archivo:") + " sin espacio", true); return; }
+        step = dst;   // solo si la copia terminó bien
         tols.clear();
         ed.reset();
         stepName = name;
