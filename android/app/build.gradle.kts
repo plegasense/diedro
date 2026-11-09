@@ -14,7 +14,7 @@ android {
         applicationId = "app.diedro.planos"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
+        versionCode = 5
         versionName = "0.1.0"
         ndk { abiFilters += "arm64-v8a" }
         externalNativeBuild { cmake { arguments += listOf("-DOCCT_DIR=$occtDir/lib/cmake/opencascade", "-DANDROID_STL=c++_shared"); cppFlags += "-std=c++17" } }
