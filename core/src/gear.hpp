@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Ruedas dentadas (engranajes, piñones de cadena, poleas dentadas): el dentado se mide en una sección perpendicular al eje y se dibuja
 // como representación convencional (cuerpo hasta el Ø de cabeza, sin dientes); los datos de la rueda salen en una tabla.
 #pragma once

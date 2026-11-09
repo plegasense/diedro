@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 import 'dart:typed_data';
 
 /// Decodificador del formato de imagen QOI (miniaturas de PrusaSlicer). Devuelve RGBA.

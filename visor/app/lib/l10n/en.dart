@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 import 'en_core.dart';
 import 'en_io_cam.dart';
 import 'en_io_mesh.dart';

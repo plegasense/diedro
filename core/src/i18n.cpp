@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 #include "i18n.hpp"
 #include <cstring>
 #include "i18n_table.hpp"

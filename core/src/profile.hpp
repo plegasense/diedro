@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Perfil de revolución de una pieza torneada: semiplano (z axial, r radial >= 0). Independiente de OCCT.
 #pragma once
 #include <map>

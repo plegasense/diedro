@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 const Map<String, String> kEnCore = {
   'glTF binario (GLB)': 'glTF binary (GLB)',
   'glTF (texto)': 'glTF (text)',

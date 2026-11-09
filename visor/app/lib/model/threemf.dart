@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Datos de un proyecto 3MF que no son geometría: piezas, placas, filamentos y ajustes.
 // Solo tipos simples para poder viajar entre isolates.
 

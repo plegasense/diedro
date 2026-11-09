@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 import 'dart:ui' as ui;
 
 /// Programa de sombreado de borde (Eye-Dome Lighting), cargado una vez desde `fx/edl.frag`.

@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) Plegasense
 """Genera core/src/notice_paths.cpp: avisos G15 en ja/ko/zh/tw/th/hi como contornos vectoriales ya modelados (HarfBuzz) con Noto Sans (OFL).
 La fuente del PDF (Osifont) solo cubre latino/cirílico/griego. Uso: python3 gen_notice_paths.py i18n/strings.tsv core/src/notice_paths.cpp
 Requiere hb-shape (brew harfbuzz) y fontTools; las fuentes se leen de NOTO (OFL 1.1, redistribuibles)."""

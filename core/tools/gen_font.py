@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) Plegasense
 # Genera core/src/font_osifont.cpp desde osifont-lgpl3fe.ttf: fuente incrustada + tabla Unicode -> glifo/ancho.
 # Uso: python3 gen_font.py osifont-lgpl3fe.ttf > ../src/font_osifont.cpp
 import sys

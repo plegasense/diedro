@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // G8: inspección con globos (estilo AS9102 Forma 3): un globo numerado por cota + tabla de características exportable.
 #pragma once
 #include <string>

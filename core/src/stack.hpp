@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 #pragma once
 // ISO 129-1 6.2: desviaciones límite en dos líneas (superior sobre inferior, marcadores decimales alineados).
 // Cadena apilada = base + \x1f + superior + \x1f + inferior; text() la reparte en tres textos.

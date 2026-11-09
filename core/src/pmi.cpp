@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Lectura de cotas con tolerancia (PMI) del STEP. Solo se devuelve lo que el archivo declara.
 #include <STEPCAFControl_Reader.hxx>
 #include <TDocStd_Document.hxx>

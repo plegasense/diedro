@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 /// Lo que se sabe de un SVG o un HPGL más allá de sus líneas: de dónde viene, qué tamaño dice
 /// tener, qué no se ha podido dibujar y, en HPGL, cómo trabajaría el plóter.
 class VectorPen {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 import 'dart:ui';
 
 import 'package:flutter/material.dart';

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Traducción al idioma «hi»: clave = texto español de `tr('…')`.
 const Map<String, String> kLang_hi = {
   'glTF binario (GLB)': 'glTF बाइनरी (GLB)',

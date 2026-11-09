@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 #include "special.hpp"
 #include "analyze.hpp"
 #include <BRepAdaptor_Curve.hxx>

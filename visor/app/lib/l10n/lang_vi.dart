@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Traducción al idioma «vi»: clave = texto español de `tr('…')`.
 const Map<String, String> kLang_vi = {
   'glTF binario (GLB)': 'glTF nhị phân (GLB)',

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Muelles helicoidales (ISO 2162-1) y levas planas: motores propios; devuelven false si la pieza no encaja (no tocan d).
 #pragma once
 #include <TopoDS_Shape.hxx>

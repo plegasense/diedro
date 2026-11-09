@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) Plegasense
 # Uso: gen_i18n.py i18n/strings.tsv  -> escribe core/src/i18n_table.{hpp,cpp} (filas scope=c)
 import sys, csv
 rows = list(csv.reader(open(sys.argv[1], encoding='utf8'), delimiter='\t'))

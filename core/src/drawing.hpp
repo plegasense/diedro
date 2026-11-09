@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Modelo de plano de Diedro: independiente de OCCT. Unidades: mm en coordenadas de hoja (origen abajo-izquierda).
 #pragma once
 #include <string>

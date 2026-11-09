@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Enlace FFI con el núcleo C++ (core/include/datum.h). El hook de compilación
 // genera la biblioteca y la registra con el identificador de este archivo.
 import 'dart:ffi';

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 #include "projsym.hpp"
 #include "dfm.hpp"
 #include <jni.h>

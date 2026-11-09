@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) Plegasense
 # Compila Open CASCADE Technology 7.9.3 (sin modificar) como biblioteca estática para android-arm64.
 # Uso: tools/build_occt_android.sh <carpeta de trabajo>   (requiere git, cmake, ninja y el NDK; variable NDK opcional)
 set -e

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 import 'dart:io';
 
 import 'package:vector_math/vector_math.dart' as vm;

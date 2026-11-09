@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 #include <sys/stat.h>
 #include "classify.hpp"
 #include "prism.hpp"

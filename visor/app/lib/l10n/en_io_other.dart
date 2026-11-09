@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Traducciones al inglés (área: io_other). Clave = texto en español tal cual aparece en `tr('…')`.
 const Map<String, String> kEn_io_other = {
   '1 texto (Text) sin dibujar: el visor no traza tipos de letra de VRML.': '1 text (Text) not drawn: the viewer does not render VRML fonts.',

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 #pragma once
 #include <BRep_Tool.hxx>
 #include <Geom_BSplineCurve.hxx>

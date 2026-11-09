@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Traducciones al inglés (área: ui_tools). Clave = texto en español tal cual aparece en `tr('…')`.
 const Map<String, String> kEn_ui_tools = {
   'Distancia mínima': 'Minimum distance',

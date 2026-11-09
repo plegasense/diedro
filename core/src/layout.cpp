@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Profile -> Drawing: vista/sección, acotación en paralelo desde la cara de referencia, rayado, cajetín.
 #include <algorithm>
 #include <array>

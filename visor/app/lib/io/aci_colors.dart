@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 /// Paleta ACI de AutoCAD (índices 1–255) calculada, sin tabla de 256 entradas.
 /// Devuelve 0xRRGGBB. El índice 7 es blanco (sobre fondo oscuro).
 int aciColor(int index) {

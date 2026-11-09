@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 import '../l10n/l10n.dart';
 import 'unit_system.dart';
 

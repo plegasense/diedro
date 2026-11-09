@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Muelles helicoidales (ISO 2162-1) y levas planas: el motor de torneado/prismático no los dibuja bien.
 // Todo se MIDE del sólido (malla fina); lo que el STEP no trae sale «NO DEFINIDO» o lo da el usuario (claves de tolerancias).
 #include "special.hpp"

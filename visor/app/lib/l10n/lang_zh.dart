@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Traducción al idioma «zh»: clave = texto español de `tr('…')`.
 const Map<String, String> kLang_zh = {
   'glTF binario (GLB)': 'glTF 二进制 (GLB)',

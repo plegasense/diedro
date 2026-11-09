@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // diedro_cli entrada.step salida.pdf [titulo] [material] [tolerancia] [n_plano]
 #include "projsym.hpp"
 #include "dfm.hpp"

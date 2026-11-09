@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 import 'package:xml/xml.dart';
 
 import 'vrml_parse.dart';

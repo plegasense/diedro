@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 import 'en.dart';
 import 'lang_cs.dart';
 import 'lang_nl.dart';

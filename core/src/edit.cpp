@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Edición de planos: órdenes de usuario (una por línea, campos con TAB) aplicadas sobre el plano generado.
 // El generador no cambia: las ediciones se guardan en el proyecto y se reaplican tras cada generación (los índices
 // de grupo y de texto son estables porque la generación es determinista).

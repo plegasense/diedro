@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // GENERADO por core/tools/gen_notice_paths.py (HarfBuzz + Noto Sans, OFL 1.1). No editar a mano.
 #include "notice_paths.hpp"
 namespace diedro {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 #include <cstdlib>
 // Prueba geométrica de legibilidad: texto contra texto y texto contra líneas (salvo bajo su máscara blanca, ejes y rayado).
 #include <algorithm>

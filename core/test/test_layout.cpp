@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Perfiles construidos a mano (verdad analítica) -> layout -> PDF. Sin OCCT: corre en Mac.
 #include <cstdio>
 #include <fstream>

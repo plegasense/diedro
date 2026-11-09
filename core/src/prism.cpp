@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 #include <optional>
 // Piezas prismáticas: STEP -> tres vistas (alzado, planta, perfil izquierdo; primer diedro) con líneas ocultas (HLR),
 // cotas por ordenadas desde la esquina de referencia, taladros con tag + nota (n×, profundidad), radios y chaflanes en notas.

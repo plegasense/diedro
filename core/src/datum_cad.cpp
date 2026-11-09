@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Importador de formatos B-rep (STEP, IGES, BREP) sobre Open CASCADE (XCAF).
 #include "datum.h"
 

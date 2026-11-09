@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 #include "assembly.hpp"
 #include "iso.hpp"
 #include <cctype>

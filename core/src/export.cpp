@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Exportación a DXF (R2000, ASCII, grosores y HATCH) y SVG de un plano. Reglas y decisiones en docs/NORMAS_G9.md.
 #include <cmath>
 #include <cstdio>

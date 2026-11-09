@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Piezas prismáticas (fresadas): tres vistas ISO (primer diedro), líneas ocultas, acotado por ordenadas desde la esquina de referencia.
 #pragma once
 #include <string>

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 import 'package:flutter/material.dart';
 
 /// Sistema de diseño de Datum: tinta oscura, grises azulados y un acento naranja.

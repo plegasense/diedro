@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 #pragma once
 // Progreso del motor (0-100 y etapa) para la pantalla de carga de la app; con DIEDRO_PROGRESS=1 el CLI lo imprime con tiempos (para ver dónde se va el tiempo).
 #include <atomic>

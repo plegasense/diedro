@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Traducciones al inglés (área: io_mesh). Clave = texto en español tal cual aparece en `tr('…')`.
 const Map<String, String> kEn_io_mesh = {
   'Tamaño de vértice meshopt no válido': 'Invalid meshopt vertex size',

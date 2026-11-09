@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Ruedas dentadas: eje, nº de dientes, Ø de cabeza y de pie, hélice, agujero, chavetero y taladros se MIDEN en secciones del sólido.
 // Módulo, ángulo de presión, Ø primitivo, calidad, etc. no están en la geometría de forma fiable: solo los da el usuario (clave de tolerancias).
 #include "gear.hpp"

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Vista isométrica sombreada (solo ilustrativa, sin escala ni cotas) colocada en el mayor hueco libre de la hoja.
 #pragma once
 #include <string>

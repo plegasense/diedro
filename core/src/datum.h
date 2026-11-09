@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // API en C del núcleo de Datum. Estable y mínima: la consume Dart por FFI.
 #ifndef DATUM_H
 #define DATUM_H

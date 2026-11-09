@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Generado por tools/gen_i18n.py desde i18n/strings.tsv; no editar.
 #include "i18n_table.hpp"
 namespace diedro {

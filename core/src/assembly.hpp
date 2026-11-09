@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Conjuntos (G7): hoja de conjunto con globos y lista de piezas + una hoja por pieza única (cada una por clasificador y motor propio).
 #pragma once
 #include <string>

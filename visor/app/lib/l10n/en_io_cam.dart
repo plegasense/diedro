@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 // Traducciones al inglés (área: io_cam). Clave = texto en español tal cual aparece en `tr('…')`.
 const Map<String, String> kEn_io_cam = {
   'No se pudo iniciar LASzip': 'Could not start LASzip',

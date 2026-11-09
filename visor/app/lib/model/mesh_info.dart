@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) Plegasense
 /// Datos de un archivo de malla (glTF, OBJ, PLY) que no son geometría: qué trae el archivo,
 /// qué falta y qué avisos merece. Solo tipos simples (viaja entre isolates).
 class TextureInfo {
