@@ -228,6 +228,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
+        if (b == null) borraCache(getCacheDir());   // ficheros temporales de sesiones anteriores
         I18n.init(this);
         rootFrame = new FrameLayout(this);
         rootFrame.setBackground(bg());
@@ -277,12 +278,100 @@ public class MainActivity extends Activity {
         TextView tv = Ui.text(this, txt, 13, Ui.TEXT, false);
         tv.setPadding(0, dp(14), 0, 0);
         box.addView(tv);
+        TextView full = Ui.text(this, t("Ver licencias completas"), 14, Ui.TEXT, false);
+        full.setBackground(Ui.rr(this, Ui.SURFACE2, 14));
+        full.setPadding(dp(14), dp(10), dp(14), dp(10));
+        Ui.press(full);
+        full.setOnClickListener(x -> licencias());
+        LinearLayout.LayoutParams flp = new LinearLayout.LayoutParams(-2, -2); flp.topMargin = dp(16);
+        box.addView(full, flp);
         ScrollView sv = new ScrollView(this);
         sv.addView(box);
         d.setContentView(sv);
         android.view.Window w = d.getWindow();
         w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
         w.setLayout(Math.min(dp(560), getResources().getDisplayMetrics().widthPixels - dp(24)), -2);
+        w.setDimAmount(0.6f);
+        d.show();
+    }
+
+    /** Lista de los textos de licencia incluidos en assets/licenses/; al tocar uno se muestra completo. */
+    private void licencias() {
+        android.app.Dialog d = new android.app.Dialog(this);
+        d.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(26), dp(24), dp(26), dp(22));
+        box.setBackground(Ui.rr(this, Ui.SURFACE, 28));
+        box.addView(Ui.text(this, t("Ver licencias completas"), 22, Ui.TEXT, true));
+        try {
+            String[] names = getAssets().list("licenses");
+            java.util.Arrays.sort(names);
+            for (String n : names) {
+                TextView b = Ui.text(this, n, 14, Ui.TEXT, false);
+                b.setBackground(Ui.rr(this, Ui.SURFACE2, 14));
+                b.setPadding(dp(14), dp(10), dp(14), dp(10));
+                Ui.press(b);
+                b.setOnClickListener(x -> textoLicencia(n));
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2); lp.topMargin = dp(10);
+                box.addView(b, lp);
+            }
+        } catch (java.io.IOException e) { /* sin lista */ }
+        ScrollView sv = new ScrollView(this);
+        sv.addView(box);
+        d.setContentView(sv);
+        android.view.Window w = d.getWindow();
+        w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+        w.setLayout(Math.min(dp(560), getResources().getDisplayMetrics().widthPixels - dp(24)), -2);
+        w.setDimAmount(0.6f);
+        d.show();
+    }
+
+    /** Muestra un texto de licencia (puede pesar >1 MB) troceado en una lista, para no bloquear la pantalla. */
+    private void textoLicencia(String name) {
+        final java.util.ArrayList<String> parts = new java.util.ArrayList<>();
+        try (InputStream in = getAssets().open("licenses/" + name)) {
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[65536]; int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            StringBuilder cur = new StringBuilder();
+            for (String ln : bo.toString("UTF-8").split("\n", -1)) {
+                cur.append(ln).append('\n');
+                if (cur.length() > 1500 && ln.trim().isEmpty()) { parts.add(cur.toString()); cur.setLength(0); }
+            }
+            if (cur.length() > 0) parts.add(cur.toString());
+        } catch (Exception e) { parts.add(String.valueOf(e.getMessage())); }
+        android.app.Dialog d = new android.app.Dialog(this);
+        d.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setPadding(dp(20), dp(20), dp(20), dp(16));
+        box.setBackground(Ui.rr(this, Ui.SURFACE, 28));
+        box.addView(Ui.text(this, name, 16, Ui.TEXT, true));
+        android.widget.ListView lv = new android.widget.ListView(this);
+        lv.setDivider(null);
+        lv.setAdapter(new android.widget.BaseAdapter() {
+            public int getCount() { return parts.size(); }
+            public Object getItem(int i) { return parts.get(i); }
+            public long getItemId(int i) { return i; }
+            public View getView(int i, View v, android.view.ViewGroup g) {
+                TextView tv = v instanceof TextView ? (TextView) v : Ui.text(MainActivity.this, "", 11, Ui.TEXT, false);
+                tv.setText(parts.get(i));
+                return tv;
+            }
+        });
+        box.addView(lv, new LinearLayout.LayoutParams(-1, 0, 1f));
+        TextView close = Ui.text(this, t("Cerrar"), 14, Ui.TEXT, false);
+        close.setBackground(Ui.rr(this, Ui.SURFACE2, 14));
+        close.setPadding(dp(14), dp(10), dp(14), dp(10));
+        Ui.press(close);
+        close.setOnClickListener(x -> d.dismiss());
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(-2, -2); clp.topMargin = dp(10);
+        box.addView(close, clp);
+        d.setContentView(box);
+        android.view.Window w = d.getWindow();
+        w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+        w.setLayout(Math.min(dp(560), getResources().getDisplayMetrics().widthPixels - dp(24)), (int) (getResources().getDisplayMetrics().heightPixels * 0.85));
         w.setDimAmount(0.6f);
         d.show();
     }
@@ -352,6 +441,12 @@ public class MainActivity extends Activity {
     }
 
     private int dp(float v) { return Ui.dp(this, v); }
+    private static void borraCache(File f) {
+        File[] k = f.listFiles();
+        if (k == null) return;
+        for (File c : k) { borraCache(c); c.delete(); }
+    }
+
     private static String t(String es) { return I18n.tr(es); }
 
     // ---------------------------------------------------------------- portada

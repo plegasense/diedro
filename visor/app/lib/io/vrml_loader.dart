@@ -15,6 +15,7 @@ import 'vrml_geom.dart';
 import 'vrml_parse.dart';
 import 'x3d_xml.dart';
 import '../l10n/l10n.dart';
+import '../dbg.dart';
 
 /// Lector de VRML 1.0, VRML 97 (2.0) y X3D en codificación clásica o XML.
 ///
@@ -156,7 +157,7 @@ SceneData _parse(String path, List<String> extraDirs) {
   final text = readVrmlText(path);
   if (_timing) {
     // ignore: avoid_print
-    print('VRML lectura de texto ${sw0.elapsedMilliseconds} ms');
+    dbg('VRML lectura de texto ${sw0.elapsedMilliseconds} ms');
   }
   final header = text.trimLeft().startsWith('#') ? text.trimLeft().split(RegExp(r'[\r\n]')).first : '';
   final isXml = text.trimLeft().startsWith('<?xml') || text.trimLeft().startsWith('<X3D');
@@ -177,7 +178,7 @@ SceneData _parse(String path, List<String> extraDirs) {
     VrmlParser(toks, doc).parseTop();
     if (_timing) {
       // ignore: avoid_print
-      print('VRML tokens $tTok ms · árbol ${sw.elapsedMilliseconds - tTok} ms');
+      dbg('VRML tokens $tTok ms · árbol ${sw.elapsedMilliseconds - tTok} ms');
     }
   }
   final dir = path.contains('/') ? path.substring(0, path.lastIndexOf('/')) : '.';
@@ -198,7 +199,7 @@ SceneData _parse(String path, List<String> extraDirs) {
   }
   if (_timing) {
     // ignore: avoid_print
-    print('VRML escena ${sw.elapsedMilliseconds} ms');
+    dbg('VRML escena ${sw.elapsedMilliseconds} ms');
   }
   final map = _prune(ctx);
   _buildRig(ctx, map);
@@ -608,7 +609,7 @@ int? _meshFor(_Ctx c, VNode geom, VNode? app, String label) {
   final md = raw.build(label, mat);
   if (_timing) {
     // ignore: avoid_print
-    print('  forma $label: geometría $tGeo ms · malla ${sw.elapsedMilliseconds - tGeo} ms');
+    dbg('  forma $label: geometría $tGeo ms · malla ${sw.elapsedMilliseconds - tGeo} ms');
   }
   if (md == null) return null;
   c.meshes.add(md);

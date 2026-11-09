@@ -51,6 +51,7 @@ import '../model/shapes.dart';
 import 'theme.dart';
 import '../l10n/l10n.dart';
 import '../model/unit_system.dart';
+import '../dbg.dart';
 
 const _kAutoOpen = String.fromEnvironment('DATUM_OPEN');
 // Solo para pruebas automáticas.
@@ -405,7 +406,7 @@ class _ViewerPageState extends State<ViewerPage> {
       _openedPlate = gcodePlate;
       if (_kAutoCad.isNotEmpty) {
         // ignore: avoid_print
-        print('LOAD ${loadWatch.elapsedMilliseconds} ms');
+        dbg('LOAD ${loadWatch.elapsedMilliseconds} ms');
       }
       // La primera vez aún no hay vista dibujada: se usa el tamaño de la pantalla.
       final screen = MediaQuery.of(context).size;
@@ -770,7 +771,7 @@ class _ViewerPageState extends State<ViewerPage> {
                 double avg(Duration Function(ui.FrameTiming) f) =>
                     times.map((t) => f(t).inMicroseconds).reduce((a, b) => a + b) / times.length / 1000;
                 // ignore: avoid_print
-                print(
+                dbg(
                   'PERF fotogramas=${times.length} construcción=${avg((t) => t.buildDuration).toStringAsFixed(1)} ms '
                   'raster=${avg((t) => t.rasterDuration).toStringAsFixed(1)} ms total=${avg((t) => t.totalSpan).toStringAsFixed(1)} ms',
                 );
@@ -883,7 +884,7 @@ class _ViewerPageState extends State<ViewerPage> {
               );
               await WidgetsBinding.instance.endOfFrame;
               // ignore: avoid_print
-              print(
+              dbg(
                 'TWIST giro ${((cam.yaw - yaw0) * 180 / math.pi).toStringAsFixed(1)}° · zoom ×${(dist0 / cam.distance).toStringAsFixed(2)}',
               );
             } else if (cmd == 'perf') {
@@ -905,7 +906,7 @@ class _ViewerPageState extends State<ViewerPage> {
                     times.length /
                     1000;
                 // ignore: avoid_print
-                print(
+                dbg(
                   'PERF fotogramas=${times.length} construcción=${avg((t) => t.buildDuration).toStringAsFixed(1)} ms raster=${avg((t) => t.rasterDuration).toStringAsFixed(1)} ms',
                 );
               }
@@ -948,7 +949,7 @@ class _ViewerPageState extends State<ViewerPage> {
                 await Future<void>.delayed(const Duration(milliseconds: 200));
               }
               // ignore: avoid_print
-              print(
+              dbg(
                 'REVIEW ${c.report?.milliseconds} ms · ${c.report?.triangles} triángulos',
               );
               final times = <ui.FrameTiming>[];
@@ -969,7 +970,7 @@ class _ViewerPageState extends State<ViewerPage> {
                     times.length /
                     1000;
                 // ignore: avoid_print
-                print(
+                dbg(
                   'PERF fotogramas=${times.length} construcción=${avg((t) => t.buildDuration).toStringAsFixed(1)} ms '
                   'raster=${avg((t) => t.rasterDuration).toStringAsFixed(1)} ms total=${avg((t) => t.totalSpan).toStringAsFixed(1)} ms',
                 );
@@ -1054,7 +1055,7 @@ class _ViewerPageState extends State<ViewerPage> {
                 }
               }
               // ignore: avoid_print
-              print('LOD ${c.lodScene != null ? 'listo' : 'no'}');
+              dbg('LOD ${c.lodScene != null ? 'listo' : 'no'}');
               final times = <ui.FrameTiming>[];
               void cb(List<ui.FrameTiming> t) => times.addAll(t);
               WidgetsBinding.instance.addTimingsCallback(cb);
@@ -1071,7 +1072,7 @@ class _ViewerPageState extends State<ViewerPage> {
                     times.length /
                     1000;
                 // ignore: avoid_print
-                print('PERF fotogramas=${times.length} total=${tot.toStringAsFixed(1)} ms');
+                dbg('PERF fotogramas=${times.length} total=${tot.toStringAsFixed(1)} ms');
               }
             }
           }
@@ -1136,7 +1137,7 @@ class _ViewerPageState extends State<ViewerPage> {
                 await Future<void>.delayed(const Duration(milliseconds: 200));
               }
               // ignore: avoid_print
-              print('LOD ${c.lodScene != null ? 'listo' : 'no'}');
+              dbg('LOD ${c.lodScene != null ? 'listo' : 'no'}');
               final times = <ui.FrameTiming>[];
               void cb(List<ui.FrameTiming> t) => times.addAll(t);
               WidgetsBinding.instance.addTimingsCallback(cb);
@@ -1155,7 +1156,7 @@ class _ViewerPageState extends State<ViewerPage> {
                     times.length /
                     1000;
                 // ignore: avoid_print
-                print('PERF fotogramas=${times.length} total=${tot.toStringAsFixed(1)} ms');
+                dbg('PERF fotogramas=${times.length} total=${tot.toStringAsFixed(1)} ms');
               }
             }
           }
@@ -1177,7 +1178,7 @@ class _ViewerPageState extends State<ViewerPage> {
           }
           WidgetsBinding.instance.removeTimingsCallback(cb);
           // ignore: avoid_print
-          print(
+          dbg(
             'STOCKPLAY 90 pasos en ${sw.elapsedMilliseconds} ms · simulación+malla máx ${worst} ms · '
             'fotogramas ${times.length} · raster ${(times.map((t) => t.rasterDuration.inMicroseconds).reduce((a, b) => a + b) / times.length / 1000).toStringAsFixed(1)} ms',
           );
@@ -1202,7 +1203,7 @@ class _ViewerPageState extends State<ViewerPage> {
                 times.length /
                 1000;
             // ignore: avoid_print
-            print(
+            dbg(
               'PERF fotogramas=${times.length} construcción=${avg((t) => t.buildDuration).toStringAsFixed(1)} ms '
               'raster=${avg((t) => t.rasterDuration).toStringAsFixed(1)} ms '
               'total=${avg((t) => t.totalSpan).toStringAsFixed(1)} ms',
@@ -1260,7 +1261,7 @@ class _ViewerPageState extends State<ViewerPage> {
                     times.length /
                     1000;
                 // ignore: avoid_print
-                print(
+                dbg(
                   'PERF fotogramas=${times.length} construcción=${avg((t) => t.buildDuration).toStringAsFixed(1)} ms '
                   'raster=${avg((t) => t.rasterDuration).toStringAsFixed(1)} ms '
                   'total=${avg((t) => t.totalSpan).toStringAsFixed(1)} ms',

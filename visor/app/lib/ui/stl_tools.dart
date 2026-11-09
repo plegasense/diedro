@@ -19,6 +19,7 @@ import 'glass.dart';
 import 'theme.dart';
 import '../io/iso_run.dart';
 import '../model/unit_system.dart';
+import '../dbg.dart';
 
 /// Cama de impresión de una máquina habitual (mm).
 class BedPreset {
@@ -458,7 +459,7 @@ class StlController extends ChangeNotifier {
     thickness = r.$1;
     _triAreas = r.$2;
     // ignore: avoid_print
-    if (const String.fromEnvironment('DATUM_CAD').isNotEmpty) print('ESPESOR ${sw.elapsedMilliseconds} ms · ${r.$1.perTriangle.length} caras · mín ${r.$1.minThickness * scale} mm');
+    if (const String.fromEnvironment('DATUM_CAD').isNotEmpty) dbg('ESPESOR ${sw.elapsedMilliseconds} ms · ${r.$1.perTriangle.length} caras · mín ${r.$1.minThickness * scale} mm');
     thicknessBusy = false;
     await _paintThickness();
   }

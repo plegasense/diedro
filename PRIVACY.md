@@ -7,6 +7,7 @@
 - The app works offline and has **no Internet permission**.
 - The STEP files you open are processed only on your device. Drawings are saved wherever you choose.
 - Settings and the recent-files list are stored only on the device and are deleted when you uninstall the app. Android cloud backup is disabled for this app.
+- Temporary working copies of opened files stay in the app's private cache on the device and are deleted each time the app starts.
 - There are no ads, analytics, accounts or third-party services.
 
 Contact: plegasense@gmail.com
@@ -18,6 +19,7 @@ Contact: plegasense@gmail.com
 - La app funciona sin conexión y **no tiene permiso de Internet**.
 - Los archivos STEP que abres se procesan únicamente en tu dispositivo. Los planos se guardan donde tú elijas.
 - Los ajustes y la lista de archivos recientes se guardan solo en el dispositivo y se eliminan al desinstalar la app. La copia de seguridad en la nube de Android está desactivada para esta app.
+- Las copias de trabajo temporales de los archivos abiertos quedan en la caché privada de la app, en el dispositivo, y se borran cada vez que la app arranca.
 - No hay anuncios, analítica, cuentas ni servicios de terceros.
 
 Contacto: plegasense@gmail.com

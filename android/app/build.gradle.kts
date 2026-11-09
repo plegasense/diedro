@@ -26,4 +26,10 @@ android {
     packaging { jniLibs { useLegacyPackaging = false } }
 }
 
+// Textos de licencia completos dentro de la app (assets/licenses/): LICENSE, NOTICE y LICENSES/*
+val licDir = file("build/generated/lic")
+val copyLic = tasks.register<Copy>("copyLicenses") { from("../../LICENSE", "../../NOTICE", "../../LICENSES"); into(File(licDir, "licenses")) }
+android.sourceSets["main"].assets.srcDir(licDir)
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(copyLic) }
+
 dependencies { releaseImplementation("app.diedro.visor:flutter_release:1.0") }
