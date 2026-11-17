@@ -138,6 +138,13 @@ public class MainActivity extends Activity {
         else ch.invokeMethod("open", java.util.Arrays.asList(f, stepName));
     }
 
+    /** Si el visor ya está enganchado (modo dividido/3D) al abrir otro archivo, hay que mandarle la pieza nueva. */
+    private void reload3d() {
+        if (visorView == null || step == null) return;
+        VisorHost.loaded = step.getPath() + "|" + step.lastModified();
+        VisorHost.channel(this).invokeMethod("open", java.util.Arrays.asList(step.getPath(), stepName));
+    }
+
     /** El visor no tiene ajustes propios: usa el idioma y las unidades elegidos en Diedro. */
     private void sendVisorConfig() {
         if (VisorHost.engine != null) VisorHost.channel(this).invokeMethod("config", java.util.Arrays.asList(I18n.choice(), I18n.unitChoice()));
@@ -1365,6 +1372,7 @@ public class MainActivity extends Activity {
             headTitle.setText(stepName);
             pdf = null; zoom.setBitmap(null);
             Ui.swap(work, home, true);
+            reload3d();
             generate();
             return;
         }
@@ -1382,6 +1390,7 @@ public class MainActivity extends Activity {
         pdf = null;
         zoom.setBitmap(null);
         Ui.swap(work, home, true);
+        reload3d();
         generate();
     }
 

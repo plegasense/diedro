@@ -14,13 +14,13 @@ android {
         applicationId = "app.diedro.planos"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
+        versionCode = 7
         versionName = "0.1.0"
         ndk { abiFilters += "arm64-v8a" }
         externalNativeBuild { cmake { arguments += listOf("-DOCCT_DIR=$occtDir/lib/cmake/opencascade", "-DANDROID_STL=c++_shared"); cppFlags += "-std=c++17" } }
     }
     externalNativeBuild { cmake { path = file("../../core/CMakeLists.txt") } }
-    val ks = Properties().apply { file(System.getProperty("user.home") + "/.diedro-keys/keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
+    val ks = Properties().apply { file(rootDir.parentFile.resolve("claves/keystore.properties")).takeIf { it.exists() }?.inputStream()?.use { load(it) } }
     signingConfigs { if (ks.isNotEmpty()) create("release") { storeFile = file(ks.getProperty("storeFile")); storePassword = ks.getProperty("storePassword"); keyAlias = ks.getProperty("keyAlias"); keyPassword = ks.getProperty("keyPassword") } }
     buildTypes { release { isMinifyEnabled = true; isShrinkResources = true; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"); if (ks.isNotEmpty()) signingConfig = signingConfigs.getByName("release") } }
     packaging { jniLibs { useLegacyPackaging = false } }

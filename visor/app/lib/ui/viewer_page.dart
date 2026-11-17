@@ -370,6 +370,8 @@ class _ViewerPageState extends State<ViewerPage> {
   }
 
   Future<void> _open(String path, {int? gcodePlate}) async {
+    // Hojas modales (sección, medidas…) abiertas sobre la pieza anterior: se cierran al cambiar de pieza.
+    if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
     String? note;
     try {
       final mb = File(path).lengthSync() / 1e6;
