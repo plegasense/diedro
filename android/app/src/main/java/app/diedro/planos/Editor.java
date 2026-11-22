@@ -28,7 +28,13 @@ final class Editor implements ZoomView.EditHandler {
     private final ArrayList<float[]> txt = new ArrayList<>();   // {idx, g, x, y, h, ang, ancho}
     private final ArrayList<String> ttxt = new ArrayList<>();
     private float[] pts = new float[0];
-    private boolean comma;
+    private final ArrayList<float[]> ext = new ArrayList<>();   // {g, x1,y1,x2,y2} de las líneas del usuario (asas)
+    private int hEnd = -1;   // extremo que se arrastra (0/1) o -1
+    private boolean comma, imp;
+    private final ArrayList<float[]> ents = new ArrayList<>();    // geometría acotable: {0,g,x1,y1,x2,y2} línea · {1,g,cx,cy,r,a0,a1} arco · {2,g,x,y} punto
+    final ArrayList<float[]> picks = new ArrayList<>();           // elementos ya tocados para la cota en curso
+    int dmode;   // 0 auto · 1 Ø · 2 R · 3 horizontal · 4 vertical · 5 alineada · 6 rosca · 7 entre centros
+    String hint = "";
     // gesto en curso
     private float ax, ay, bx, by, sx;
     private boolean dragging, wasSel;
@@ -44,13 +50,15 @@ final class Editor implements ZoomView.EditHandler {
         int np = 0;
         for (String l : r.split("\n")) if (l.startsWith("PAGINA\t")) np++;
         pages = Math.max(1, np);
-        grp.clear(); gname.clear(); txt.clear(); ttxt.clear();
+        grp.clear(); gname.clear(); txt.clear(); ttxt.clear(); ext.clear(); ents.clear(); picks.clear(); imp = false;
         int nPts = 0;
         comma = false;
         for (String l : r.split("\n")) {
             String[] q = l.split("\t", -1);
             try {
-                if (l.startsWith("PAGINA\t") && q[1].equals(pg)) { sw = Float.parseFloat(q[2]); sh = Float.parseFloat(q[3]); scale = Float.parseFloat(q[4]); }
+                if (l.startsWith("PAGINA\t") && q[1].equals(pg)) { sw = Float.parseFloat(q[2]); sh = Float.parseFloat(q[3]); scale = Float.parseFloat(q[4]); imp = q.length > 5 && q[5].equals("1"); }
+                else if (l.startsWith("LINEA\t") && q[1].equals(pg)) ents.add(new float[]{0, Integer.parseInt(q[2]), Float.parseFloat(q[3]), Float.parseFloat(q[4]), Float.parseFloat(q[5]), Float.parseFloat(q[6])});
+                else if (l.startsWith("ARCO\t") && q[1].equals(pg)) ents.add(new float[]{1, Integer.parseInt(q[2]), Float.parseFloat(q[3]), Float.parseFloat(q[4]), Float.parseFloat(q[5]), Float.parseFloat(q[6]), Float.parseFloat(q[7])});
                 else if (l.startsWith("GRUPO\t") && q[1].equals(pg)) {
                     grp.add(new float[]{Integer.parseInt(q[2]), Float.parseFloat(q[4]), Float.parseFloat(q[5]), Float.parseFloat(q[6]), Float.parseFloat(q[7])});
                     gname.add(q[3]);
@@ -58,6 +66,8 @@ final class Editor implements ZoomView.EditHandler {
                     txt.add(new float[]{Integer.parseInt(q[2]), Integer.parseInt(q[3]), Float.parseFloat(q[4]), Float.parseFloat(q[5]), Float.parseFloat(q[6]), Float.parseFloat(q[7]), Float.parseFloat(q[8])});
                     ttxt.add(q.length > 9 ? q[9] : "");
                     if (q.length > 9 && q[9].matches(".*\\d,\\d.*")) comma = true;
+                } else if (l.startsWith("EXTREMOS\t") && q[1].equals(pg)) {
+                    ext.add(new float[]{Integer.parseInt(q[2]), Float.parseFloat(q[3]), Float.parseFloat(q[4]), Float.parseFloat(q[5]), Float.parseFloat(q[6])});
                 } else if (l.startsWith("PUNTOS") && nPts++ == page) {
                     pts = new float[(q.length - 1) / 2 * 2];
                     for (int i = 0; i < pts.length; i++) pts[i] = Float.parseFloat(q[i + 1]);
@@ -75,17 +85,36 @@ final class Editor implements ZoomView.EditHandler {
     private static String f(float v) { return String.format(Locale.ROOT, "%.3f", v); }
     private static String clean(String s) { return s.replace('\t', ' ').replace('\n', ' ').trim(); }
 
-    void add(String op) { ops.add(op); redo.clear(); host.changed(); }
+    private ArrayList<String> backup = new ArrayList<>();   // ediciones guardadas al «volver al original» (se pueden recuperar)
+    boolean hasBackup() { return ops.isEmpty() && !backup.isEmpty(); }
+    boolean canOriginal() { return !ops.isEmpty(); }
+    /** Vuelve al plano original sin perder las ediciones: quedan guardadas hasta la siguiente edición. */
+    void original() { if (ops.isEmpty()) return; backup = new ArrayList<>(ops); ops.clear(); redo.clear(); selG = selT = -1; dimPend = false; picks.clear(); host.changed(); }
+    void restoreOriginal() { if (!hasBackup()) return; ops.addAll(backup); backup.clear(); host.changed(); }
+    void add(String op) { ops.add(op); redo.clear(); backup.clear(); host.changed(); }
     void undo() { if (ops.isEmpty()) return; redo.add(ops.remove(ops.size() - 1)); host.changed(); }
     void redo() { if (redo.isEmpty()) return; ops.add(redo.remove(redo.size() - 1)); host.changed(); }
-    void reset() { ops.clear(); redo.clear(); selG = selT = -1; page = 0; dimPend = false; }
+    void reset() { backup.clear(); ops.clear(); redo.clear(); selG = selT = -1; page = 0; dimPend = false; }
 
     void scaleSel(float k) { if (selG >= 0) add("S\t" + page + "\t" + selG + "\t" + f(k)); }
     void scaleAll(float k) { for (float[] g : grp) ops.add("S\t" + page + "\t" + (int) g[0] + "\t" + f(k)); redo.clear(); host.changed(); }
+    float pinchK = 1;
+    boolean canPinch() { return on && tool == SEL && (selG >= 0 || selT >= 0); }
+    void pinchEnd() {   // pellizco terminado: aplica el factor a la selección
+        float k = Math.max(0.2f, Math.min(5f, pinchK)); pinchK = 1;
+        if (Math.abs(k - 1) < 0.04f) { host.changed(); return; }
+        if (selT >= 0) add("TS\t" + page + "\t" + selT + "\t" + f(k)); else if (selG >= 0) scaleSel(k);
+    }
     void deleteSel() {
-        if (selT >= 0) { add("TD\t" + page + "\t" + selT); selT = -1; }
+        if (selT >= 0) { add("DD\t" + page + "\t" + selT); selT = -1; }
         else if (selG >= 0) { add("H\t" + page + "\t" + selG); selG = -1; }
         host.toolbar();
+    }
+    void duplicateSel() {   // copia del texto seleccionado, desplazada 5 mm
+        int i = textIndex(selT);
+        if (i < 0) return;
+        float[] t = txt.get(i);
+        add("AT\t" + page + "\t" + f(t[2] + 5) + "\t" + f(t[3] - 5) + "\t" + f(t[4]) + "\t" + clean(ttxt.get(i)));
     }
     void editSelText() {
         int i = textIndex(selT);
@@ -95,8 +124,8 @@ final class Editor implements ZoomView.EditHandler {
     }
     String selName() { int i = groupIndex(selG); return selG >= 0 && i >= 0 ? gname.get(i) : selT >= 0 ? "Texto" : ""; }
 
-    void setPage(int p) { if (p == page) return; page = p; selG = selT = -1; dimPend = false; info(raw); host.changed(); }
-    void setTool(int t) { tool = t; dimPend = false; selG = selT = -1; dragging = false; host.toolbar(); }
+    void setPage(int p) { if (p == page) return; page = p; selG = selT = -1; dimPend = false; picks.clear(); info(raw); host.changed(); }
+    void setTool(int t) { tool = t; dmode = 0; dimPend = false; picks.clear(); hint = t == DIM ? "Toca una arista, círculo, arco o punto para acotar" : ""; selG = selT = -1; dragging = false; host.toolbar(); }
 
     // ------------------------------------------------------------ gestos
     private float kOf(int g) {  // escala acumulada del grupo por las operaciones S
@@ -142,6 +171,12 @@ final class Editor implements ZoomView.EditHandler {
         float x = fx * sw, y = (1 - fy) * sh;
         px0 = screenX; py0 = screenY;
         dragging = false;
+        hEnd = -1;
+        if (tool == SEL && selG >= 0) {   // asas en los extremos de una línea del usuario
+            float r = 18f / sx * sw;
+            for (float[] e : ext) if ((int) e[0] == selG)
+                for (int k = 0; k < 2; k++) if (Math.hypot(x - e[1 + 2 * k], y - e[2 + 2 * k]) < r) { hEnd = k; ax = x; ay = y; bx = x; by = y; return true; }
+        }
         if (tool == SEL) {
             int t = hitText(x, y);
             wasSel = t >= 0 && t == selT;
@@ -167,15 +202,21 @@ final class Editor implements ZoomView.EditHandler {
 
     @Override public void up(float fx, float fy) {
         float x = fx * sw, y = (1 - fy) * sh;
+        if (tool == SEL && hEnd >= 0) {
+            if (dragging) { float[] sn = snap(x, y); for (float[] e : ext) if ((int) e[0] == selG) add("LE\t" + page + "\t" + selG + "\t" + hEnd + "\t" + f(sn[0]) + "\t" + f(sn[1])); }
+            hEnd = -1; dragging = false;
+            return;
+        }
         if (tool == SEL) {
             if (dragging) {
                 float dx = x - ax, dy = y - ay;
-                if (selT >= 0) add("TM\t" + page + "\t" + selT + "\t" + f(dx) + "\t" + f(dy));
+                if (selT >= 0) add("DM\t" + page + "\t" + selT + "\t" + f(dx) + "\t" + f(dy));
                 else if (selG >= 0) add("M\t" + page + "\t" + selG + "\t" + f(dx) + "\t" + f(dy));
             } else if (wasSel && selT >= 0) editSelText();
             dragging = false;
             return;
         }
+        if (tool == DIM && !dimPend && !dragging) { dimTap(x, y); return; }
         float[] s = snap(x, y);
         bx = s[0]; by = s[1];
         final float x1 = ax, y1 = ay, x2 = bx, y2 = by;
@@ -197,6 +238,125 @@ final class Editor implements ZoomView.EditHandler {
         else if (tool == DIM) { ax0 = x1; ay0 = y1; bx0 = x2; by0 = y2; dimPend = true; host.toolbar(); }
     }
 
+
+    // ------------------------------------------------------------ cota inteligente (toques sobre la geometría)
+    private float tolMm() { return 16f / sx * sw; }
+
+    private static double segDist(double px, double py, double x1, double y1, double x2, double y2) {
+        double dx = x2 - x1, dy = y2 - y1, l2 = dx * dx + dy * dy, t = l2 == 0 ? 0 : Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / l2));
+        return Math.hypot(px - x1 - t * dx, py - y1 - t * dy);
+    }
+
+    /** Elemento acotable bajo el toque: vértice (≤ tol), si no el círculo/arista más cercano. */
+    private float[] pick(float x, float y) {
+        float tol = tolMm(), bd = tol * tol;
+        float[] best = null;
+        for (int i = 0; i + 1 < pts.length; i += 2) { float dx = pts[i] - x, dy = pts[i + 1] - y, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = new float[]{2, -1, pts[i], pts[i + 1]}; } }
+        if (best != null) return best;
+        double bb = tol;
+        for (float[] e : ents) {
+            double d;
+            if (e[0] == 0) d = segDist(x, y, e[2], e[3], e[4], e[5]);
+            else {
+                double ang = Math.toDegrees(Math.atan2(y - e[3], x - e[2])), a0 = e[5], sweep = e[6] - e[5];
+                if (sweep < 359) { double u = ((ang - a0) % 360 + 360) % 360; if (u > sweep + 6) continue; }
+                d = Math.abs(Math.hypot(x - e[2], y - e[3]) - e[4]);
+            }
+            if (d < bb) { bb = d; best = e.clone(); }
+        }
+        if (best != null && best[0] == 1 && dmode == 7) return new float[]{2, best[1], best[2], best[3]};   // «entre centros»: el círculo cuenta como su centro
+        return best;
+    }
+
+    private static boolean same(float[] a, float[] b) { return java.util.Arrays.equals(a, b); }
+
+    private void dimTap(float x, float y) {
+        float[] h = pick(x, y);
+        if (h != null && h[0] == 1) { picks.clear(); picks.add(h); hint = "Toca donde colocar la cota"; host.toolbar(); return; }
+        if (picks.isEmpty()) { if (h != null) { picks.add(h); hint = h[0] == 2 ? "Toca otra arista o punto, o toca donde colocar la cota" : "Toca otra arista o punto, o toca donde colocar la cota"; } host.toolbar(); return; }
+        if (picks.size() == 1 && h != null && !same(h, picks.get(0)) && picks.get(0)[0] != 1) { picks.add(h); hint = "Toca donde colocar la cota"; host.toolbar(); return; }
+        if (picks.size() == 1 && picks.get(0)[0] == 2) return;   // un punto solo no se acota: falta otro
+        place(x, y);
+    }
+
+    private String num(double mm, int g) {
+        double v = mm / (scale * kOf(g));
+        String s;
+        if (imp) { s = String.format(Locale.ROOT, "%.3f", v / 25.4); if (s.startsWith("0.")) s = s.substring(1); }   // ASME Y14.5 §4.3.2(b): 3 decimales, sin cero inicial
+        else s = String.format(Locale.ROOT, "%.2f", v).replaceAll("(\\.\\d*?)0+$", "$1").replaceAll("\\.$", "");
+        return comma ? s.replace('.', ',') : s;
+    }
+
+    private void place(float x, float y) {
+        final float[] a = picks.get(0), b = picks.size() > 1 ? picks.get(1) : null;
+        final int g = (int) (a[1] >= 0 ? a[1] : b != null ? b[1] : -1);
+        String op = null, txt = "";
+        if (a[0] == 1) {
+            boolean full = a[6] - a[5] >= 359;
+            int m = dmode == 1 || dmode == 2 || dmode == 6 ? dmode : full ? 1 : 2;
+            double an = Math.toDegrees(Math.atan2(y - a[3], x - a[2]));
+            if (m == 2) { txt = "R" + num(a[4], g); op = "RAD\t" + page + "\t" + f(a[2]) + "\t" + f(a[3]) + "\t" + f(a[4]) + "\t" + f((float) an) + "\t"; }
+            else { txt = (m == 6 ? "M" : "Ø") + num(2 * a[4], g); op = "DIA\t" + page + "\t" + f(a[2]) + "\t" + f(a[3]) + "\t" + f(a[4]) + "\t" + f((float) an) + "\t"; }
+        } else {
+            double[] p1, p2;
+            if (a[0] == 0 && b != null && b[0] == 0) {   // dos aristas: ángulo o distancia entre paralelas
+                double d1x = a[4] - a[2], d1y = a[5] - a[3], d2x = b[4] - b[2], d2y = b[5] - b[3], l1 = Math.hypot(d1x, d1y), l2 = Math.hypot(d2x, d2y);
+                double cr = (d1x * d2y - d1y * d2x) / (l1 * l2);
+                if (Math.abs(cr) < 0.01) {   // paralelas
+                    double t = ((x - a[2]) * d1x + (y - a[3]) * d1y) / (l1 * l1);
+                    double q1x = a[2] + t * d1x, q1y = a[3] + t * d1y, u = ((q1x - b[2]) * d2x + (q1y - b[3]) * d2y) / (l2 * l2);
+                    p1 = new double[]{q1x, q1y}; p2 = new double[]{b[2] + u * d2x, b[3] + u * d2y};
+                    linear(p1, p2, x, y, g); return;
+                }
+                double t = ((b[2] - a[2]) * d2y - (b[3] - a[3]) * d2x) / (d1x * d2y - d1y * d2x);
+                double vx = a[2] + t * d1x, vy = a[3] + t * d1y;
+                double[] rays = {Math.toDegrees(Math.atan2(d1y, d1x)), Math.toDegrees(Math.atan2(-d1y, -d1x)), Math.toDegrees(Math.atan2(d2y, d2x)), Math.toDegrees(Math.atan2(-d2y, -d2x))};
+                for (int i = 0; i < 4; i++) rays[i] = (rays[i] % 360 + 360) % 360;
+                java.util.Arrays.sort(rays);
+                double th = (Math.toDegrees(Math.atan2(y - vy, x - vx)) % 360 + 360) % 360, a0 = rays[3], a1 = rays[0] + 360;
+                for (int i = 0; i < 3; i++) if (th >= rays[i] && th < rays[i + 1]) { a0 = rays[i]; a1 = rays[i + 1]; }
+                if (th < rays[0]) { a0 = rays[3] - 360; a1 = rays[0]; }
+                double r = Math.max(8, Math.min(90, Math.hypot(x - vx, y - vy)));
+                String v = String.format(Locale.ROOT, "%.1f", a1 - a0).replaceAll("\\.0$", "");
+                if (comma) v = v.replace('.', ',');
+                final String op2 = "ANG\t" + page + "\t" + f((float) vx) + "\t" + f((float) vy) + "\t" + f((float) a0) + "\t" + f((float) a1) + "\t" + f((float) r) + "\t";
+                finish(op2, v + "°");
+                return;
+            }
+            if (a[0] == 0) { p1 = new double[]{a[2], a[3]}; p2 = new double[]{a[4], a[5]}; }
+            else if (b == null) return;
+            else if (b[0] == 2) { p1 = new double[]{a[2], a[3]}; p2 = new double[]{b[2], b[3]}; }
+            else {   // punto y arista: distancia perpendicular
+                double dx = b[4] - b[2], dy = b[5] - b[3], u = ((a[2] - b[2]) * dx + (a[3] - b[3]) * dy) / (dx * dx + dy * dy);
+                p1 = new double[]{a[2], a[3]}; p2 = new double[]{b[2] + u * dx, b[3] + u * dy};
+            }
+            linear(p1, p2, x, y, g); return;
+        }
+        finish(op, txt);
+    }
+
+    private void linear(double[] p1, double[] p2, float x, float y, int g) {
+        int m = dmode == 3 || dmode == 4 ? dmode : 5;
+        double dx = p2[0] - p1[0], dy = p2[1] - p1[1];
+        String op, v;
+        if (m == 3) { if (Math.abs(dx) < 0.5) { picks.clear(); host.toolbar(); return; } v = num(Math.abs(dx), g); op = "DX\t" + page + "\t" + f((float) p1[0]) + "\t" + f((float) p1[1]) + "\t" + f((float) p2[0]) + "\t" + f((float) p2[1]) + "\t0\t" + f(y) + "\t"; }
+        else if (m == 4) { if (Math.abs(dy) < 0.5) { picks.clear(); host.toolbar(); return; } v = num(Math.abs(dy), g); op = "DX\t" + page + "\t" + f((float) p1[0]) + "\t" + f((float) p1[1]) + "\t" + f((float) p2[0]) + "\t" + f((float) p2[1]) + "\t1\t" + f(x) + "\t"; }
+        else {
+            double L = Math.hypot(dx, dy);
+            if (L < 0.5) { picks.clear(); host.toolbar(); return; }
+            float off = (float) (-(dy / L) * (x - p1[0]) + (dx / L) * (y - p1[1]));
+            v = num(L, g);
+            op = "AD\t" + page + "\t" + f((float) p1[0]) + "\t" + f((float) p1[1]) + "\t" + f((float) p2[0]) + "\t" + f((float) p2[1]) + "\t" + f(off) + "\t";
+        }
+        finish(op, v);
+    }
+
+    private void finish(final String op, String init) {
+        picks.clear(); hint = "Toca una arista, círculo, arco o punto para acotar";
+        host.toolbar();
+        host.ask("Valor de la cota", init, s2 -> { if (!clean(s2).isEmpty()) add(op + clean(s2)); });
+    }
+
     @Override public void cancel() { dragging = false; }
 
     // ------------------------------------------------------------ dibujo sobre la hoja
@@ -214,11 +374,37 @@ final class Editor implements ZoomView.EditHandler {
         int ti = textIndex(selT);
         if (selT >= 0 && ti >= 0) { float[] t = txt.get(ti); r = new float[]{t[2] - 1, t[3] - 1, t[2] + t[6] + 1, t[3] + t[4] + 1}; }
         if (r != null) {
+            float cx0 = (r[0] + r[2]) / 2, cy0 = (r[1] + r[3]) / 2, hw = (r[2] - r[0]) / 2 * pinchK, hh = (r[3] - r[1]) / 2 * pinchK;
+            r = new float[]{cx0 - hw, cy0 - hh, cx0 + hw, cy0 + hh};
             float[] q = {(r[0] + ox) * kx, (sh - r[3] - oy) * ky, (r[2] + ox) * kx, (sh - r[1] - oy) * ky};
             m.mapPoints(q);
             c.drawRect(q[0], q[1], q[2], q[3], p);
         }
         p.setPathEffect(null);
+        if (tool == SEL && selG >= 0) {
+            p.setColor(0xFF36C2B4);
+            p.setStyle(Paint.Style.FILL);
+            for (float[] e : ext) if ((int) e[0] == selG) for (int k = 0; k < 2; k++) {
+                float[] q = {e[1 + 2 * k] * kx, (sh - e[2 + 2 * k]) * ky};
+                if (hEnd == k && dragging) { q[0] = bx * kx; q[1] = (sh - by) * ky; }
+                m.mapPoints(q);
+                c.drawCircle(q[0], q[1], 7 * dp, p);
+            }
+            p.setStyle(Paint.Style.STROKE);
+        }
+        if (tool == DIM && !picks.isEmpty()) {
+            p.setColor(0xFFF2B84B); p.setStrokeWidth(4 * dp);
+            for (float[] e : picks) {
+                if (e[0] == 0) { float[] q = {e[2] * kx, (sh - e[3]) * ky, e[4] * kx, (sh - e[5]) * ky}; m.mapPoints(q); c.drawLine(q[0], q[1], q[2], q[3], p); }
+                else if (e[0] == 1) {
+                    Path pa = new Path();
+                    int n = 48; float sw0 = e[6] - e[5];
+                    for (int i = 0; i <= n; i++) { double t = Math.toRadians(e[5] + sw0 * i / n); float[] q = {(float) (e[2] + e[4] * Math.cos(t)) * kx, (float) (sh - e[3] - e[4] * Math.sin(t)) * ky}; m.mapPoints(q); if (i == 0) pa.moveTo(q[0], q[1]); else pa.lineTo(q[0], q[1]); }
+                    c.drawPath(pa, p);
+                } else { float[] q = {e[2] * kx, (sh - e[3]) * ky}; m.mapPoints(q); p.setStyle(Paint.Style.FILL); c.drawCircle(q[0], q[1], 7 * dp, p); p.setStyle(Paint.Style.STROKE); }
+            }
+            p.setStrokeWidth(2 * dp);
+        }
         if (dimPend) {
             float[] q = {ax0 * kx, (sh - ay0) * ky, bx0 * kx, (sh - by0) * ky};
             m.mapPoints(q);

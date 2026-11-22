@@ -37,7 +37,8 @@ public class ZoomView extends View {
         void cancel();
     }
     private Editor edit;
-    private boolean editing;
+    private boolean editing, pinching;
+    private float pd0;
     public void setEditor(Editor e) { edit = e; invalidate(); }
     /** Cambia la imagen conservando el zoom y el encuadre actuales (al editar). */
     public void swapBitmap(Bitmap b) { boolean same = bmp != null && b != null && bmp.getWidth() == b.getWidth() && bmp.getHeight() == b.getHeight(); bmp = b; if (!same) fitToView(); else invalidate(); }
@@ -162,6 +163,16 @@ public class ZoomView extends View {
     @Override public boolean onTouchEvent(MotionEvent e) {
         if (edit != null && edit.on && bmp != null) {
             int a = e.getActionMasked();
+            if (pinching) {   // pellizco sobre lo seleccionado: cambia su escala
+                if (a == MotionEvent.ACTION_MOVE && e.getPointerCount() >= 2) { edit.pinchK = (float) Math.hypot(e.getX(0) - e.getX(1), e.getY(0) - e.getY(1)) / pd0; invalidate(); }
+                else if (a == MotionEvent.ACTION_POINTER_UP || a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) { pinching = false; if (a == MotionEvent.ACTION_CANCEL) edit.pinchK = 1; edit.pinchEnd(); invalidate(); }
+                return true;
+            }
+            if (a == MotionEvent.ACTION_POINTER_DOWN && e.getPointerCount() == 2 && edit.canPinch()) {
+                edit.cancel(); editing = false; pinching = true; edit.pinchK = 1;
+                pd0 = Math.max(20f, (float) Math.hypot(e.getX(0) - e.getX(1), e.getY(0) - e.getY(1)));
+                return true;
+            }
             if (a == MotionEvent.ACTION_DOWN) { float[] f = frac(e.getX(), e.getY()); editing = edit.down(f[0], f[1], curScale() * bmp.getWidth(), e.getX(), e.getY()); }
             else if (editing && a == MotionEvent.ACTION_POINTER_DOWN) { edit.cancel(); editing = false; }
             if (editing) {

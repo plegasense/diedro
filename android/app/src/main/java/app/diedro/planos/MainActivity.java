@@ -255,11 +255,15 @@ public class MainActivity extends Activity {
     }
 
     // Cambio de idioma o unidades: reconstruye las vistas conservando datos y regenera el plano.
+    private boolean lastGenImp;
     private void rebuild() {
         String a = title.getText().toString(), p = partNo.getText().toString(), m = material.getText().toString(), g = tol.getText().toString();
         String hd = headTitle.getText().toString();
         boolean inWork = work.getVisibility() == View.VISIBLE;
+        if (visorView != null) hide3d();   // S1: desconecta el visor del motor Flutter estático antes de reconstruir
+        final java.util.ArrayList<String> keepOps = new java.util.ArrayList<>(ed.ops), keepRedo = new java.util.ArrayList<>(ed.redo);   // M2r3: las ediciones manuales sobreviven al cambio de ajustes
         buildUi();
+        if (I18n.imperial() == lastGenImp) { ed.ops.addAll(keepOps); ed.redo.addAll(keepRedo); }   // C4r4: textos y cotas editados llevan el valor en las unidades antiguas; si cambian las unidades, se descartan
         title.setText(a); partNo.setText(p); material.setText(m); tol.setText(g);
         headTitle.setText(hd);
         if (inWork) { home.setVisibility(View.GONE); work.setVisibility(View.VISIBLE); }
@@ -280,6 +284,7 @@ public class MainActivity extends Activity {
             + "\n\nC++ runtime (LLVM libc++): Apache License 2.0 with LLVM exception."
             + "\n\nNoto Sans / Noto Sans CJK (glyph outlines for ja, ko, zh, th, hi): Copyright 2012 Google Inc. and The Noto Project Authors; Adobe Source Han Sans: Copyright Adobe. SIL Open Font License 1.1 (https://openfontlicense.org)."
             + "\n\nDXF template derived from ezdxf: MIT License, Copyright (c) 2020 Manfred Moitzi."
+            + "\n\nAndroidX and kotlinx-coroutines/Kotlin runtime: Apache-2.0 (Copyright The Android Open Source Project, JetBrains s.r.o.)."
             + "\n\nFlutter, Dart and Flutter packages: BSD-3-Clause, MIT, Apache-2.0 and other permissive licences (Copyright The Flutter and Dart authors); full notices in LICENSES/THIRD_PARTY_NOTICES-flutter.txt of the repository."
             + "\n\n" + "Source code and full licence texts (files LICENSE, NOTICE and LICENSES): https://github.com/plegasense/diedro";
         TextView tv = Ui.text(this, txt, 13, Ui.TEXT, false);
@@ -681,7 +686,7 @@ public class MainActivity extends Activity {
         editScroll.setHorizontalScrollBarEnabled(false);
         editScroll.setVisibility(View.GONE);
         editBar = new LinearLayout(this);
-        editBar.setGravity(Gravity.CENTER_VERTICAL);
+        editBar.setOrientation(LinearLayout.VERTICAL);
         editScroll.addView(editBar);
         FrameLayout.LayoutParams ebl = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP | Gravity.START);
         ebl.setMargins(dp(10), dp(12), dp(58), 0);
@@ -747,7 +752,7 @@ public class MainActivity extends Activity {
         if (k == 3) { saveProject(); return; }
         if (k == 4) {
             startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/csv")
-                    .putExtra(Intent.EXTRA_TITLE, title.getText().toString().replaceAll("[^A-Za-z0-9_-]", "_") + "_inspeccion.csv"), SAVECSV);
+                    .putExtra(Intent.EXTRA_TITLE, title.getText().toString().replaceAll("[^\\p{L}\\p{N}_-]", "_") + "_inspeccion.csv"), SAVECSV);
             return;
         }
         if (pdf == null) return;
@@ -852,16 +857,19 @@ public class MainActivity extends Activity {
 
     /** Exporta las hojas «sel» (PDF/DXF/SVG); un solo fichero → crear documento, varios → carpeta. */
     private void exportSel(String ext, String sel, boolean split) {
-        if (pdf == null) return;
+        if (pdf == null) { Ui.snack(rootFrame, t("No hay plano que guardar"), true); return; }
         final String ops = String.join("\n", ed.ops);
-        String n0 = title.getText().toString().replaceAll("[^A-Za-z0-9_-]", "_");
+        String n0 = title.getText().toString().replaceAll("[^\\p{L}\\p{N}_-]", "_");
         final String name = (n0.isEmpty() ? "plano" : n0) + "." + ext;
         final File dir = new File(getCacheDir(), "exp");
         new Thread(() -> {
+            String r;
+            synchronized (GEN_LOCK) {
             File[] old = dir.listFiles();
             if (old != null) for (File f : old) f.delete();
             dir.mkdirs();
-            String r = Native.exportPages(dir.getPath(), name, ops, sel, split);
+            r = Native.exportPages(dir.getPath(), name, ops, sel, split);
+            }
             runOnUiThread(() -> {
                 if (r.startsWith("ERROR")) { Ui.snack(rootFrame, errTr(r.substring(5).trim()), true); return; }
                 pendingExport = r.trim().split("\n");
@@ -881,13 +889,16 @@ public class MainActivity extends Activity {
             } else {
                 Uri doc = android.provider.DocumentsContract.buildDocumentUriUsingTree(u, android.provider.DocumentsContract.getTreeDocumentId(u));
                 for (String f : pendingExport) {
-                    String nm = new File(f).getName().replaceAll("(?i)\\." + pendingExt + "$", "");
-                    Uri o = android.provider.DocumentsContract.createDocument(getContentResolver(), doc, pendingExt.equals("pdf") ? "application/pdf" : pendingExt.equals("svg") ? "image/svg+xml" : "application/dxf", nm);
+                    String nm = new File(f).getName();
+                    boolean known = pendingExt.equals("pdf") || pendingExt.equals("svg");   // con MIME conocido el proveedor añade la extensión; DXF no tiene: nombre completo y octet-stream
+                    if (known) nm = nm.replaceAll("(?i)\\." + pendingExt + "$", "");
+                    Uri o = android.provider.DocumentsContract.createDocument(getContentResolver(), doc, pendingExt.equals("pdf") ? "application/pdf" : pendingExt.equals("svg") ? "image/svg+xml" : "application/octet-stream", nm);
+                    if (o == null) throw new java.io.IOException(t("No se pudo crear el archivo"));
                     try (InputStream in = new FileInputStream(f); OutputStream out = getContentResolver().openOutputStream(o)) { copy(in, out); }
                 }
             }
-            Ui.snack(rootFrame, t("Exportado"), false);
-        } catch (Exception e) { Ui.snack(rootFrame, t("No se pudo guardar:") + " " + e.getMessage(), true); }
+            runOnUiThread(() -> Ui.snack(rootFrame, t("Exportado"), false));
+        } catch (Exception e) { final String m = String.valueOf(e.getMessage()); runOnUiThread(() -> Ui.snack(rootFrame, t("No se pudo guardar:") + " " + m, true)); }
     }
 
     // ---------------------------------------------------------------- edición del plano
@@ -924,15 +935,15 @@ public class MainActivity extends Activity {
 
     /** Repinta el plano con las ediciones actuales (sin regenerar), conservando el zoom. */
     private void rerender() {
-        if (pdf == null) return;
+        if (pdf == null) { Ui.snack(rootFrame, t("No hay plano que guardar"), true); return; }
         final String ops = String.join("\n", ed.ops);
         final File f = pdf;
         final int seq = ++renderSeq;
         renderQ.execute(() -> {
-            String info0 = Native.render(f.getPath(), ops);
+            String info0; Bitmap b;
+            synchronized (GEN_LOCK) { info0 = Native.render(f.getPath(), ops); b = render(f); }
             final boolean ok = !info0.startsWith("ERROR");
             final String info = ok ? info0 : "";   // si falla la edición, el PDF anterior sigue válido: al menos se cambia de hoja
-            Bitmap b = render(f);
             runOnUiThread(() -> {
                 if (b == null || seq != renderSeq) return;
                 java.util.ArrayList<float[]> hr = new java.util.ArrayList<>(), vr = new java.util.ArrayList<>();
@@ -975,31 +986,50 @@ public class MainActivity extends Activity {
         if (editBar == null) return;
         editBar.removeAllViews();
         editScroll.setVisibility(ed.on ? View.VISIBLE : View.GONE);
-        zoom.setTopInset(ed.on ? dp(44) : 0);
+        zoom.setTopInset(ed.on ? dp(ed.tool == Editor.DIM ? 128 : 92) : 0);
         if (!ed.on) return;
-        for (int i = 0; i < ed.pages && ed.pages > 1 && (rail == null || rail.count() < 2); i++) { final int k = i; editBar.addView(chip(t("Hoja") + " " + (i + 1), ed.page == i, v -> ed.setPage(k))); }
-        String[] tn = {"Mover", "Texto", "Línea", "Flecha", "Cota"};
-        for (int i = 0; i < tn.length; i++) { final int k = i; editBar.addView(chip(t(tn[i]), ed.tool == i, v -> ed.setTool(k))); }
+        final LinearLayout row1 = new LinearLayout(this), row2 = new LinearLayout(this);
+        row1.setGravity(Gravity.CENTER_VERTICAL); row2.setGravity(Gravity.CENTER_VERTICAL);
+        row2.setPadding(0, dp(6), 0, 0);
+        final LinearLayout row3 = new LinearLayout(this);
+        editBar.addView(row1); editBar.addView(row2); if (ed.tool == Editor.DIM) editBar.addView(row3);
+        for (int i = 0; i < ed.pages && ed.pages > 1 && (rail == null || rail.count() < 2); i++) { final int k = i; row1.addView(chip(t("Hoja") + " " + (i + 1), ed.page == i, v -> ed.setPage(k))); }
+        String[] tn = {"Mover", "Texto", "Línea auxiliar", "Flecha", "Cota"};
+        for (int i = 0; i < tn.length; i++) { final int k = i; row1.addView(chip(t(tn[i]), ed.tool == i, v -> ed.setTool(k))); }
         TextView u = chip("↶", false, v -> ed.undo()), r = chip("↷", false, v -> ed.redo());
         u.setAlpha(ed.ops.isEmpty() ? 0.4f : 1f);
         r.setAlpha(ed.redo.isEmpty() ? 0.4f : 1f);
-        editBar.addView(u); editBar.addView(r);
-        if (ed.selG >= 0) {
+        row1.addView(u); row1.addView(r);
+        if (ed.hasBackup()) row1.addView(chip(t("Recuperar ediciones"), false, v -> ed.restoreOriginal()));
+        else if (ed.canOriginal()) row1.addView(chip(t("Plano original"), false, v -> ed.original()));
+        if (ed.tool == Editor.DIM) {
+            TextView tl = Ui.text(this, t("Tipo"), 12, Ui.MUTED, false);
+            tl.setPadding(dp(4), 0, dp(8), 0);
+            row2.addView(tl);
+            String[] dm = {"Auto", "Ø", "R", "Rosca", "Horizontal", "Vertical", "Alineada", "Entre centros"};
+            int[] dc = {0, 1, 2, 6, 3, 4, 5, 7};
+            for (int i = 0; i < dm.length; i++) { final int k = dc[i]; row2.addView(chip(i == 1 || i == 2 ? dm[i] : t(dm[i]), ed.dmode == k, v -> { ed.dmode = k; ed.picks.clear(); buildEditBar(); zoom.invalidate(); })); }
+            if (!ed.picks.isEmpty()) row3.addView(chip(t("Cancelar selección"), false, v -> { ed.picks.clear(); ed.hint = "Toca una arista, círculo, arco o punto para acotar"; buildEditBar(); zoom.invalidate(); }));
+            TextView hn = Ui.text(this, t(ed.hint), 12, Ui.MUTED, false);
+            hn.setPadding(dp(8), dp(6), dp(8), 0);
+            row3.addView(hn);
+        } else if (ed.selG >= 0) {
             TextView n = Ui.text(this, t(ed.selName()), 13, Ui.AMBER, true);
             n.setPadding(dp(6), 0, dp(10), 0);
-            editBar.addView(n);
-            editBar.addView(chip(t("Escala") + " −", false, v -> ed.scaleSel(0.8f)));
-            editBar.addView(chip(t("Escala") + " +", false, v -> ed.scaleSel(1.25f)));
-            editBar.addView(chip(t("Ocultar"), false, v -> ed.deleteSel()));
+            row2.addView(n);
+            row2.addView(chip(t("Escala") + " −", false, v -> ed.scaleSel(0.8f)));
+            row2.addView(chip(t("Escala") + " +", false, v -> ed.scaleSel(1.25f)));
+            row2.addView(chip(t("Ocultar"), false, v -> ed.deleteSel()));
         } else if (ed.selT < 0) {
             TextView n = Ui.text(this, t("Escala de la hoja"), 13, Ui.MUTED, false);
             n.setPadding(dp(6), 0, dp(6), 0);
-            editBar.addView(n);
-            editBar.addView(chip("−", false, v -> ed.scaleAll(0.8f)));
-            editBar.addView(chip("+", false, v -> ed.scaleAll(1.25f)));
+            row2.addView(n);
+            row2.addView(chip("−", false, v -> ed.scaleAll(0.8f)));
+            row2.addView(chip("+", false, v -> ed.scaleAll(1.25f)));
         } else {
-            editBar.addView(chip(t("Editar texto"), false, v -> ed.editSelText()));
-            editBar.addView(chip(t("Borrar"), false, v -> ed.deleteSel()));
+            row2.addView(chip(t("Editar texto"), false, v -> ed.editSelText()));
+            row2.addView(chip(t("Duplicar"), false, v -> ed.duplicateSel()));
+            row2.addView(chip(t("Borrar"), false, v -> ed.deleteSel()));
         }
     }
 
@@ -1246,38 +1276,45 @@ public class MainActivity extends Activity {
         return sb.toString();
     }
 
-    private void writeProject(OutputStream os) throws Exception {
+    /** Los campos de la UI se leen en el hilo de la UI (aquí); el hash y el zip se hacen luego en un hilo (M4). */
+    private org.json.JSONObject projectJson() throws Exception {
         org.json.JSONObject j = new org.json.JSONObject();
         j.put("formato", 1).put("app", "Diedro").put("pieza", title.getText().toString()).put("plano", partNo.getText().toString())
                 .put("material", material.getText().toString()).put("toleranciaGeneral", tol.getText().toString()).put("modelo", stepName)
-                .put("sha256", sha256(step));
+                ;
         org.json.JSONObject t = new org.json.JSONObject();
         for (java.util.Map.Entry<String, String> en : tols.entrySet()) t.put(en.getKey(), en.getValue());
         j.put("tolerancias", t);
         j.put("ediciones", new org.json.JSONArray(ed.ops));
+        return j;
+    }
+
+    private void writeProject(OutputStream os, org.json.JSONObject j, File stepF) throws Exception {
+        j.put("sha256", sha256(stepF));
         try (java.util.zip.ZipOutputStream z = new java.util.zip.ZipOutputStream(os)) {
             z.putNextEntry(new java.util.zip.ZipEntry("project.json"));
             z.write(j.toString(2).getBytes("UTF-8"));
             z.closeEntry();
             z.putNextEntry(new java.util.zip.ZipEntry("model.step"));
-            try (InputStream in = new FileInputStream(step)) { copy(in, z); }
+            try (InputStream in = new FileInputStream(stepF)) { copy(in, z); }
             z.closeEntry();
         }
     }
 
-    private boolean readProject(File src) {
+    /** S3: se ejecuta fuera del hilo de la UI; devuelve lo que hay que aplicar en la UI, o null si el proyecto no vale. */
+    private Runnable readProject(File src) {
         try (java.util.zip.ZipInputStream z = new java.util.zip.ZipInputStream(new FileInputStream(src))) {
             java.util.zip.ZipEntry e;
             org.json.JSONObject j = null;
             File st = new File(getCacheDir(), "in.proj");
             boolean gotStep = false;
             while ((e = z.getNextEntry()) != null) {
-                if (e.getName().equals("project.json")) { ByteArrayOutputStream b = new ByteArrayOutputStream(); byte[] bf = new byte[8192]; int k; while ((k = z.read(bf)) > 0) { b.write(bf, 0, k); if (b.size() > (1 << 20)) return false; }   // tope 1 MB: un .diedro ajeno no agota la memoria
+                if (e.getName().equals("project.json")) { ByteArrayOutputStream b = new ByteArrayOutputStream(); byte[] bf = new byte[8192]; int k; while ((k = z.read(bf)) > 0) { b.write(bf, 0, k); if (b.size() > (1 << 20)) return null; }   // tope 1 MB: un .diedro ajeno no agota la memoria
                      j = new org.json.JSONObject(b.toString("UTF-8")); }
-                else if (e.getName().equals("model.step")) { try (OutputStream o = new FileOutputStream(st)) { copy(z, o); } gotStep = true; }
+                else if (e.getName().equals("model.step")) { try (OutputStream o = new FileOutputStream(st)) { byte[] bf = new byte[65536]; long tot = 0; int k; while ((k = z.read(bf)) > 0) { tot += k; if (tot > (600L << 20)) { st.delete(); return null; } o.write(bf, 0, k); } } gotStep = true; }
             }
-            if (j == null || !gotStep) return false;
-            if (!j.optString("sha256").equals(sha256(st))) { Ui.snack(rootFrame, t("El proyecto está dañado (huella SHA-256 distinta)"), true); return false; }
+            if (j == null || !gotStep) return null;
+            if (!j.optString("sha256").equals(sha256(st))) { runOnUiThread(() -> Ui.snack(rootFrame, t("El proyecto está dañado (huella SHA-256 distinta)"), true)); return null; }
             java.util.LinkedHashMap<String, String> nt = new java.util.LinkedHashMap<>();   // todo se lee antes de tocar el estado actual
             org.json.JSONObject t = j.optJSONObject("tolerancias");
             if (t != null) for (java.util.Iterator<String> it = t.keys(); it.hasNext(); ) { String k = it.next(); nt.put(k, t.getString(k)); }
@@ -1285,20 +1322,22 @@ public class MainActivity extends Activity {
             org.json.JSONArray ea = j.optJSONArray("ediciones");
             if (ea != null) for (int i = 0; i < Math.min(ea.length(), 20000); i++) ne.add(ea.getString(i));
             String nm = j.optString("modelo", "pieza.step");
-            File ok = new File(getCacheDir(), "in.step"); ok.delete(); if (!st.renameTo(ok)) return false;
-            step = ok;
-            stepName = nm;
-            title.setText(j.optString("pieza")); partNo.setText(j.optString("plano")); material.setText(j.optString("material")); tol.setText(j.optString("toleranciaGeneral"));
-            tols.clear(); tols.putAll(nt);
-            ed.reset();
-            ed.ops.addAll(ne);
-            return true;
-        } catch (Exception ex) { return false; }
+            final File ok = nextStepFile(); if (!st.renameTo(ok)) return null;
+            final org.json.JSONObject jj = j;
+            return () -> {
+                dropOldStep(ok); step = ok;
+                stepName = nm;
+                title.setText(jj.optString("pieza")); partNo.setText(jj.optString("plano")); material.setText(jj.optString("material")); tol.setText(jj.optString("toleranciaGeneral"));
+                tols.clear(); tols.putAll(nt);
+                ed.reset();
+                ed.ops.addAll(ne);
+            };
+        } catch (Exception ex) { return null; }
     }
 
     private void saveProject() {
         if (step == null) return;
-        String n = title.getText().toString().replaceAll("[^A-Za-z0-9_-]", "_");
+        String n = title.getText().toString().replaceAll("[^\\p{L}\\p{N}_-]", "_");
         startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/octet-stream")
                 .putExtra(Intent.EXTRA_TITLE, (n.isEmpty() ? "proyecto" : n) + ".diedro"), SAVEPROJ);
     }
@@ -1309,8 +1348,8 @@ public class MainActivity extends Activity {
     }
 
     private void save() {
-        if (pdf == null) return;
-        String n = title.getText().toString().replaceAll("[^A-Za-z0-9_-]", "_");
+        if (pdf == null) { Ui.snack(rootFrame, t("No hay plano que guardar"), true); return; }
+        String n = title.getText().toString().replaceAll("[^\\p{L}\\p{N}_-]", "_");
         startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/pdf")
                 .putExtra(Intent.EXTRA_TITLE, (n.isEmpty() ? "plano" : n) + ".pdf"), SAVE);
     }
@@ -1318,22 +1357,40 @@ public class MainActivity extends Activity {
     @Override protected void onActivityResult(int rq, int rc, Intent d) {
         if (rc != RESULT_OK || d == null || d.getData() == null) return;
         Uri u = d.getData();
+        if ((rq == SAVE || rq == SAVECSV || rq == EXPORT || rq == EXPORTDIR) && step != null && !update.isEnabled()) Ui.snack(rootFrame, t("Generando plano…"), false);   // S2: el guardado espera a que termine la generación en curso
         if (rq == SAVE) {
-            try (InputStream in = new FileInputStream(pdf); OutputStream out = getContentResolver().openOutputStream(u)) {
-                copy(in, out);
-                Ui.snack(rootFrame, t("PDF guardado"), false);
-            } catch (Exception e) { Ui.snack(rootFrame, t("No se pudo guardar:") + " " + e.getMessage(), true); }
+            final File src = pdf;   // S2: la copia espera a que termine cualquier generación que reescriba plano.pdf
+            new Thread(() -> { synchronized (GEN_LOCK) {
+                String er = null;
+                try (InputStream in = new FileInputStream(src); OutputStream out = getContentResolver().openOutputStream(u)) { copy(in, out); } catch (Exception e) { er = e.getMessage(); }
+                final String fe = er;
+                runOnUiThread(() -> Ui.snack(rootFrame, fe == null ? t("PDF guardado") : t("No se pudo guardar:") + " " + fe, fe != null));
+            } }).start();
             return;
         }
-        if ((rq == EXPORT || rq == EXPORTDIR) && pendingExport != null) { writeExport(u, rq == EXPORTDIR); return; }
+        if ((rq == EXPORT || rq == EXPORTDIR) && pendingExport != null) {
+            final boolean tr = rq == EXPORTDIR;
+            new Thread(() -> { synchronized (GEN_LOCK) { writeExport(u, tr); } }).start();
+            return;
+        }
         if (rq == SAVECSV) {
-            try (InputStream in = new FileInputStream(new File(getCacheDir(), "plano.pdf.csv")); OutputStream out = getContentResolver().openOutputStream(u)) { copy(in, out); Ui.snack(rootFrame, t("Exportado"), false); }
-            catch (Exception e) { Ui.snack(rootFrame, t("No se pudo guardar:") + " " + e.getMessage(), true); }
+            new Thread(() -> { synchronized (GEN_LOCK) {
+                String er = null;
+                try (InputStream in = new FileInputStream(new File(getCacheDir(), "plano.pdf.csv")); OutputStream out = getContentResolver().openOutputStream(u)) { copy(in, out); } catch (Exception e) { er = e.getMessage(); }
+                final String fe = er;
+                runOnUiThread(() -> Ui.snack(rootFrame, fe == null ? t("Exportado") : t("No se pudo guardar:") + " " + fe, fe != null));
+            } }).start();
             return;
         }
         if (rq == SAVEPROJ) {
-            try (OutputStream out = getContentResolver().openOutputStream(u)) { writeProject(out); Ui.snack(rootFrame, t("Proyecto guardado"), false); }
-            catch (Exception e) { Ui.snack(rootFrame, t("No se pudo guardar:") + " " + e.getMessage(), true); }
+            final org.json.JSONObject pj; final File stepF = step;
+            try { pj = projectJson(); } catch (Exception e) { Ui.snack(rootFrame, t("No se pudo guardar:") + " " + e.getMessage(), true); return; }
+            new Thread(() -> { synchronized (GEN_LOCK) {
+                String er = null;
+                try (OutputStream out = getContentResolver().openOutputStream(u)) { writeProject(out, pj, stepF); } catch (Exception e) { er = String.valueOf(e.getMessage()); }
+                final String fe = er;
+                runOnUiThread(() -> Ui.snack(rootFrame, fe == null ? t("Proyecto guardado") : t("No se pudo guardar:") + " " + fe, fe != null));
+            } }).start();
             return;
         }
         if (rq != PICK) return;
@@ -1355,20 +1412,28 @@ public class MainActivity extends Activity {
                 copy(in, out);
             } catch (Exception e) { err = e.getMessage(); tmp.delete(); }
             final String fe = err;
+            final Runnable ap = err == null && nm.toLowerCase().endsWith(".diedro") ? readProject(tmp) : null;
             runOnUiThread(() -> {
                 if (my != loadId) { tmp.delete(); return; }   // llegó otra apertura: esta ya no vale
                 if (fe != null) { Ui.snack(rootFrame, t("No se pudo leer el archivo:") + " " + fe, true); return; }
-                openLocal(tmp, nm);
+                openLocal(tmp, nm, ap);
             });
         }).start();
     }
     private int loadId;
+    private int stepSeq;
+    private final java.util.Set<File> stepsInUse = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    /** M8: cada modelo cargado va a su propio archivo; así una generación en curso sigue leyendo el anterior sin pisarlo. */
+    private synchronized File nextStepFile() { return new File(getCacheDir(), "in" + (++stepSeq) + ".step"); }
+    /** S4: ya no se borra por tiempo (una generación puede tardar minutos); se barren al terminar las que ni están en uso ni son la actual. */
+    private void dropOldStep(File keep) { }
+    private void sweepSteps() { File[] fs = getCacheDir().listFiles(); if (fs == null) return; for (File f : fs) if (f.getName().matches("in\\d+\\.step") && !f.equals(step) && !stepsInUse.contains(f)) f.delete(); }
 
-    private void openLocal(File tmp, String name) {
+    private void openLocal(File tmp, String name, Runnable applyProject) {
         if (name.toLowerCase().endsWith(".diedro")) {   // un proyecto se valida antes de tocar el modelo actual
-            boolean ok = readProject(tmp);
             tmp.delete();
-            if (!ok) { Ui.snack(rootFrame, t("Proyecto Diedro no válido"), true); return; }
+            if (applyProject == null) { Ui.snack(rootFrame, t("Proyecto Diedro no válido"), true); return; }
+            applyProject.run();
             headTitle.setText(stepName);
             pdf = null; zoom.setBitmap(null);
             Ui.swap(work, home, true);
@@ -1376,10 +1441,9 @@ public class MainActivity extends Activity {
             generate();
             return;
         }
-        File dst = new File(getCacheDir(), "in.step");
-        dst.delete();
+        File dst = nextStepFile();
         if (!tmp.renameTo(dst)) { tmp.delete(); Ui.snack(rootFrame, t("No hay espacio suficiente en el dispositivo."), true); return; }
-        step = dst;   // solo si la copia terminó bien
+        dropOldStep(dst); step = dst;   // solo si la copia terminó bien
         tols.clear();
         ed.reset();
         stepName = name;
@@ -1407,7 +1471,9 @@ public class MainActivity extends Activity {
         status.setAlpha(1f);
         status.animate().alpha(0.35f).setDuration(700).withEndAction(() -> { if (!status.getText().toString().isEmpty()) status.animate().alpha(1f).setDuration(700).start(); }).start();
         zoom.animate().alpha(0.25f).setDuration(200).start();
+        final File stp = step; stepsInUse.add(stp);   // M8: copia local; un openLocal concurrente no cambia el archivo a medio análisis
         final String tolsText = tolsText();
+        final String opsNow = String.join("\n", ed.ops);   // copia en el hilo de la UI: el editor puede cambiar mientras el motor trabaja
         final String t = title.getText().toString(), p = partNo.getText().toString(), m = material.getText().toString(), g = tol.getText().toString();
         final Loader[] ld = {null};
         final Runnable showLd = () -> { ld[0] = new Loader(this, t("Generando plano…"), t("Las piezas complejas pueden tardar unos minutos.")); ld[0].show(rootFrame); };
@@ -1419,11 +1485,13 @@ public class MainActivity extends Activity {
             new File(getCacheDir(), "plano.pdf.csv").delete();
             Native.setProjection(I18n.thirdAngle());
             Native.setDfm(I18n.dfm());
-            String r0 = Native.generate(step.getPath(), out.getPath(), t, p, m, g, tolsText, I18n.lang(), I18n.imperial(), I18n.sheet(), I18n.explode(), I18n.inspect());
-            String inf = r0.startsWith("ERROR") || !out.exists() ? "" : Native.render(out.getPath(), String.join("\n", ed.ops));
+            lastGenImp = I18n.imperial();
+            String r0 = Native.generate(stp.getPath(), out.getPath(), t, p, m, g, tolsText, I18n.lang(), I18n.imperial(), I18n.sheet(), I18n.explode(), I18n.inspect());
+            String inf = r0.startsWith("ERROR") || !out.exists() ? "" : Native.render(out.getPath(), opsNow);
             if (inf.startsWith("ERROR")) inf = "";
             final String info = inf, r = inf.isEmpty() ? r0 : r0.replaceAll("(?m)^(AGUJERO|VISTA)\t.*\n?", "") + "\n" + inf;
             Bitmap bmp = out.exists() ? render(out) : null;
+            stepsInUse.remove(stp); sweepSteps();
             runOnUiThread(() -> {
                 rootFrame.removeCallbacks(showLd); if (ld[0] != null) ld[0].hide(rootFrame);
                 if (my != genId) return;   // llegó otra carga/regeneración: este resultado ya no vale
@@ -1435,6 +1503,7 @@ public class MainActivity extends Activity {
                     if (android.os.Build.VERSION.SDK_INT >= 30) rootFrame.performHapticFeedback(android.view.HapticFeedbackConstants.REJECT);
                     return;
                 }
+                if (bmp == null) { pdf = null; zoom.setBitmap(null); }   // M8: error → ningún plano viejo queda exportable
                 if (out.exists()) showRail(r0, out);
                 if (!info.isEmpty()) ed.info(info);
                 if (bmp != null) { pdf = out; zoom.setBitmap(bmp); applyMarks(bmp); applyHoles(bmp); buildEditBar(); zoom.setAlpha(0f); zoom.animate().alpha(1f).setDuration(450).start(); }

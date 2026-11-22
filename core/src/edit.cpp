@@ -5,7 +5,11 @@
 // de grupo y de texto son estables porque la generación es determinista).
 //   M p g dx dy      mover el grupo g (mm)            S p g k          escalar el grupo g respecto a su centro
 //   H p g            ocultar el grupo g               T p i texto      cambiar el texto i
-//   TM p i dx dy     mover el texto i                 TD p i           borrar el texto i
+//   TS p i k         escalar la altura del texto i     TM p i dx dy     mover el texto i                 TD p i           borrar el texto i
+//   DM p i dx dy     mover la cota entera (texto i)   DD p i           borrar la cota entera
+//   LE p g k x y     mover el extremo k de una línea añadida
+//   DX p x1 y1 x2 y2 eje pos txt   cota horizontal(0)/vertical(1)     DIA p cx cy r ang txt   cota de diámetro
+//   RAD p cx cy r ang txt   cota de radio     ANG p vx vy a0 a1 r txt   cota angular (decisión propia sobre ISO 129-1 §5.7.2-5.7.3: docs/NORMAS_G5.md)
 //   AT p x y h txt   añadir texto                     AL p x1 y1 x2 y2 tipo   añadir línea (tipo 0 continua, 1 oculta, 2 eje)
 //   AA p x1 y1 x2 y2 txt   nota con flecha en (x1,y1)  AD p x1 y1 x2 y2 off txt   cota alineada con desplazamiento off
 #include <algorithm>
@@ -16,6 +20,7 @@
 #include <sstream>
 #include "drawing.hpp"
 #include "font.hpp"
+#include "i18n.hpp"
 
 namespace diedro {
 namespace {
@@ -93,6 +98,81 @@ void textAlong(Drawing& d, int g, double mx, double my, double ang, double h, co
     t.y = my - w / 2 * sn + c * 1.0;
     t.g = g;
     d.texts.push_back(t);
+}
+
+
+// Cota completa a partir de su texto (ISO 129-1 §5: línea de cota, flechas y líneas de referencia forman un todo).
+// Las cotas generadas no guardan vínculo texto↔geometría: se reconstruye por geometría (decisión propia, docs/NORMAS_G5.md).
+struct DimParts { int line = -1; std::vector<int> ext, arrows; double ux = 1, uy = 0; };
+DimParts findDim(const Drawing& d, size_t ti) {
+    DimParts r;
+    const Text& t = d.texts[ti];
+    if (t.g < 0 || t.s.empty()) return r;
+    const double w = tw(t.s, t.height), ca = std::cos(t.angle * M_PI / 180), sa = std::sin(t.angle * M_PI / 180);
+    const double cx = t.x + ca * w / 2 - sa * t.height / 2, cy = t.y + sa * w / 2 + ca * t.height / 2;
+    double best = 1e9;
+    for (size_t i = 0; i < d.lines.size(); i++) {
+        const Line& l = d.lines[i];
+        if (l.g != t.g || l.type != LineType::Continuous || l.width > 0.3) continue;
+        const double L = std::hypot(l.x2 - l.x1, l.y2 - l.y1);
+        if (L < 4) continue;
+        const double ux = (l.x2 - l.x1) / L, uy = (l.y2 - l.y1) / L;
+        const double along = (cx - l.x1) * ux + (cy - l.y1) * uy, perp = std::fabs(-(cx - l.x1) * uy + (cy - l.y1) * ux);
+        if (perp > 2.2 * t.height || along < -t.height - 6 || along > L + t.height + 6) continue;
+        // debe llevar flecha en algún extremo
+        bool ar = false;
+        for (auto& p : d.polys) if (p.g == t.g && p.pts.size() == 3 && p.hatch == 0 && p.gray < 0 && !p.white)
+            for (double e : {0.0, 1.0}) if (std::hypot(p.pts[0].first - (e ? l.x2 : l.x1), p.pts[0].second - (e ? l.y2 : l.y1)) < 0.6) ar = true;
+        if (!ar) continue;
+        if (perp < best) { best = perp; r.line = (int)i; r.ux = ux; r.uy = uy; }
+    }
+    if (r.line < 0) return r;
+    const Line& l = d.lines[r.line];
+    for (size_t k = 0; k < d.polys.size(); k++) {
+        const Poly& p = d.polys[k];
+        if (p.g != t.g || p.pts.size() != 3 || p.hatch != 0 || p.gray >= 0 || p.white) continue;
+        for (double e : {0.0, 1.0}) if (std::hypot(p.pts[0].first - (e ? l.x2 : l.x1), p.pts[0].second - (e ? l.y2 : l.y1)) < 0.6) { r.arrows.push_back((int)k); break; }
+    }
+    for (size_t i = 0; i < d.lines.size(); i++) {   // líneas de referencia: perpendiculares y acabadas en la línea de cota (≤3 mm de saliente)
+        const Line& e = d.lines[i];
+        if ((int)i == r.line || e.g != t.g || e.type != LineType::Continuous || e.width > 0.3) continue;
+        const double L = std::hypot(e.x2 - e.x1, e.y2 - e.y1);
+        if (L < 0.5 || std::fabs((e.x2 - e.x1) * r.ux + (e.y2 - e.y1) * r.uy) / L > 0.02) continue;
+        for (double k : {0.0, 1.0}) {
+            const double px = k ? e.x2 : e.x1, py = k ? e.y2 : e.y1;
+            for (double q : {0.0, 1.0}) {
+                const double ex = q ? l.x2 : l.x1, ey = q ? l.y2 : l.y1;
+                if (std::fabs((px - ex) * r.ux + (py - ey) * r.uy) < 0.6 && std::fabs(-(px - ex) * r.uy + (py - ey) * r.ux) < 3.2) { r.ext.push_back((int)i); k = 2; break; }
+            }
+            if (k == 2) break;
+        }
+    }
+    return r;
+}
+// mueve la cota: la línea y las flechas solo en la perpendicular; las líneas de referencia se alargan; el texto, libre
+void moveDim(Drawing& d, size_t ti, double dx, double dy) {
+    const DimParts r = findDim(d, ti);
+    d.texts[ti].x += dx; d.texts[ti].y += dy;
+    if (r.line < 0) return;
+    const double nx = -r.uy, ny = r.ux, dn = dx * nx + dy * ny, mx = nx * dn, my = ny * dn;
+    Line& l = d.lines[r.line];
+    const Line l0 = l;
+    l.x1 += mx; l.x2 += mx; l.y1 += my; l.y2 += my;
+    for (int k : r.arrows) for (auto& p : d.polys[k].pts) { p.first += mx; p.second += my; }
+    for (int i : r.ext) {
+        Line& e = d.lines[i];
+        const bool a = std::fabs((e.x1 - l0.x1) * nx + (e.y1 - l0.y1) * ny) < std::fabs((e.x2 - l0.x1) * nx + (e.y2 - l0.y1) * ny);
+        if (a) { e.x1 += mx; e.y1 += my; } else { e.x2 += mx; e.y2 += my; }
+    }
+}
+void deleteDim(Drawing& d, size_t ti) {
+    const DimParts r = findDim(d, ti);
+    d.texts[ti].s.clear();
+    if (r.line < 0) return;
+    std::set<int> L(r.ext.begin(), r.ext.end()), P(r.arrows.begin(), r.arrows.end());
+    L.insert(r.line);
+    for (auto it = L.rbegin(); it != L.rend(); ++it) d.lines.erase(d.lines.begin() + *it);
+    for (auto it = P.rbegin(); it != P.rend(); ++it) d.polys.erase(d.polys.begin() + *it);
 }
 
 void moveGroup(Drawing& d, int g, double dx, double dy) {
@@ -286,8 +366,16 @@ void applyEdits(Drawing& d, int page, const std::string& ops) {
             if (k > 0.05 && k < 20) { scaleGroup(d, g, k); kk[g] = (kk.count(g) ? kk[g] : 1.0) * k; }
         }
         else if (c == "H") { const int g = (int)num(f, 2); hideGroup(d, g); hidden.insert(g); }
+        else if (c == "TS" && f.size() >= 4) { size_t i = (size_t)num(f, 2); const double k = num(f, 3); if (i < d.texts.size() && k > 0.05 && k < 20) d.texts[i].height *= k; }
         else if (c == "T" && f.size() >= 4) { size_t i = (size_t)num(f, 2); if (i < d.texts.size()) d.texts[i].s = f[3]; }
         else if (c == "TM" && f.size() >= 5) { size_t i = (size_t)num(f, 2); if (i < d.texts.size()) { d.texts[i].x += num(f, 3); d.texts[i].y += num(f, 4); } }
+        else if (c == "DM" && f.size() >= 5) { size_t i = (size_t)num(f, 2); if (i < d.texts.size()) moveDim(d, i, num(f, 3), num(f, 4)); }
+        else if (c == "LE" && f.size() >= 6) {   // mover un extremo (k=0/1) de la línea del usuario del grupo g
+            const int g = (int)num(f, 2), k = (int)num(f, 3);
+            if (g >= 0 && g < (int)d.groups.size() && d.groups[g] == "Línea")
+                for (auto& l : d.lines) if (l.g == g) { (k ? l.x2 : l.x1) = num(f, 4); (k ? l.y2 : l.y1) = num(f, 5); break; }
+        }
+        else if (c == "DD") { size_t i = (size_t)num(f, 2); if (i < d.texts.size()) deleteDim(d, i); }
         else if (c == "TD") { size_t i = (size_t)num(f, 2); if (i < d.texts.size()) d.texts[i].s.clear(); }
         else if (c == "AT" && f.size() >= 6) { Text t{num(f, 2), num(f, 3), std::max(1.0, num(f, 4)), f[5], 0, false}; d.texts.push_back(t); }
         else if (c == "AL" && f.size() >= 7) {
@@ -302,6 +390,66 @@ void applyEdits(Drawing& d, int page, const std::string& ops) {
             Text t{x2 + (x2 >= x1 ? 1.0 : -1.0 - tw(f[6], 3.5)), y2 + 0.5, 3.5, f[6], 0, false};
             t.g = g;
             d.texts.push_back(t);
+        }
+        else if (c == "DX" && f.size() >= 9) {   // cota lineal horizontal (axis 0, línea en y=pos) o vertical (axis 1, línea en x=pos)
+            const double x1 = num(f, 2), y1 = num(f, 3), x2 = num(f, 4), y2 = num(f, 5), pos = num(f, 7);
+            const int ax = (int)num(f, 6);
+            const double a1 = ax ? y1 : x1, a2 = ax ? y2 : x2, b1 = ax ? x1 : y1, b2 = ax ? x2 : y2;   // a: a lo largo de la cota; b: perpendicular
+            if (std::fabs(a2 - a1) < 0.5) continue;
+            const int g = newGroup(d, "Cota");
+            auto P = [&](double a, double b, double& x, double& y) { x = ax ? b : a; y = ax ? a : b; };
+            const double s1 = pos >= b1 ? 1 : -1, s2 = pos >= b2 ? 1 : -1;
+            double px, py, qx, qy;
+            P(a1, b1 + s1, px, py); P(a1, pos + s1 * 1.5, qx, qy); addLine(d, g, px, py, qx, qy, 0.25, LineType::Continuous);
+            P(a2, b2 + s2, px, py); P(a2, pos + s2 * 1.5, qx, qy); addLine(d, g, px, py, qx, qy, 0.25, LineType::Continuous);
+            double lx1, ly1, lx2, ly2; P(a1, pos, lx1, ly1); P(a2, pos, lx2, ly2);
+            addLine(d, g, lx1, ly1, lx2, ly2, 0.25, LineType::Continuous);
+            const double ux = (lx2 - lx1) / std::hypot(lx2 - lx1, ly2 - ly1), uy = (ly2 - ly1) / std::hypot(lx2 - lx1, ly2 - ly1);
+            arrowAt(d, g, lx1, ly1, ux, uy); arrowAt(d, g, lx2, ly2, -ux, -uy);
+            textAlong(d, g, (lx1 + lx2) / 2, (ly1 + ly2) / 2, ax ? 90 : 0, 3.5, f[8]);
+        }
+        else if (c == "DIA" && f.size() >= 7) {   // Ø: línea de cota por el centro con dirección ang; flechas dentro si el valor cabe, fuera si no (ISO 129-1 §5.7.3)
+            const double cx = num(f, 2), cy = num(f, 3), r = num(f, 4), an = num(f, 5) * M_PI / 180;
+            if (r < 0.2) continue;
+            const int g = newGroup(d, "Cota");
+            const double ux = std::cos(an), uy = std::sin(an), w = tw(f[6], 3.5);
+            if (2 * r >= w + 8) {
+                addLine(d, g, cx - ux * r, cy - uy * r, cx + ux * r, cy + uy * r, 0.25, LineType::Continuous);
+                arrowAt(d, g, cx + ux * r, cy + uy * r, -ux, -uy); arrowAt(d, g, cx - ux * r, cy - uy * r, ux, uy);
+                textAlong(d, g, cx, cy, num(f, 5), 3.5, f[6]);
+            } else {
+                const double e = r + 6;
+                addLine(d, g, cx - ux * e, cy - uy * e, cx + ux * e, cy + uy * e, 0.25, LineType::Continuous);
+                arrowAt(d, g, cx + ux * r, cy + uy * r, ux, uy); arrowAt(d, g, cx - ux * r, cy - uy * r, -ux, -uy);
+                textAlong(d, g, cx + ux * (e + 1 + w / 2), cy + uy * (e + 1 + w / 2), num(f, 5), 3.5, f[6]);
+            }
+        }
+        else if (c == "RAD" && f.size() >= 7) {   // R: línea desde el centro con una flecha en el arco; valor dentro o prolongado fuera
+            const double cx = num(f, 2), cy = num(f, 3), r = num(f, 4), an = num(f, 5) * M_PI / 180;
+            if (r < 0.2) continue;
+            const int g = newGroup(d, "Cota");
+            const double ux = std::cos(an), uy = std::sin(an), w = tw(f[6], 3.5);
+            const bool in = r >= w + 6;
+            const double e = in ? r : r + w + 3;
+            addLine(d, g, cx, cy, cx + ux * e, cy + uy * e, 0.25, LineType::Continuous);
+            arrowAt(d, g, cx + ux * r, cy + uy * r, -ux, -uy);
+            const double tm = in ? r / 2 : r + 1.5 + w / 2;
+            textAlong(d, g, cx + ux * tm, cy + uy * tm, num(f, 5), 3.5, f[6]);
+        }
+        else if (c == "ANG" && f.size() >= 8) {   // ángulo: arco de centro el vértice, de a0 a a1 (° antihorario), radio r
+            const double vx = num(f, 2), vy = num(f, 3), a0 = num(f, 4), a1 = num(f, 5), r = num(f, 6);
+            if (r < 2 || std::fabs(a1 - a0) < 0.5) continue;
+            const int g = newGroup(d, "Cota");
+            Arc a{vx, vy, r, a0, a1, LineType::Continuous, 0.25}; a.g = g; d.arcs.push_back(a);
+            for (int k = 0; k < 2; k++) {
+                const double t = (k ? a1 : a0) * M_PI / 180, ux = std::cos(t), uy = std::sin(t), sg = k ? -1 : 1;
+                arrowAt(d, g, vx + ux * r, vy + uy * r, -uy * sg, ux * sg);
+                addLine(d, g, vx + ux * r, vy + uy * r, vx + ux * (r + 2), vy + uy * (r + 2), 0.25, LineType::Continuous);
+            }
+            const double m = (a0 + a1) / 2 * M_PI / 180, w = tw(f[7], 3.5);
+            const double tx = vx + std::cos(m) * (r + 2 + 2.5), ty = vy + std::sin(m) * (r + 2 + 2.5);
+            Text t{tx - w / 2 + std::cos(m) * w / 2 * 0.9, ty - 1.5 + std::sin(m) * 2.0, 3.5, f[7], 0, false};
+            t.g = g; d.texts.push_back(t);
         }
         else if (c == "AD" && f.size() >= 8) {
             const int g = newGroup(d, "Cota");
@@ -330,11 +478,16 @@ void applyEdits(Drawing& d, int page, const std::string& ops) {
 
 std::string editInfo(const Drawing& d, int page) {
     std::ostringstream o;
-    o << "PAGINA\t" << page << "\t" << d.sheetW << "\t" << d.sheetH << "\t" << d.scale << "\n";
+    o << "PAGINA\t" << page << "\t" << d.sheetW << "\t" << d.sheetH << "\t" << d.scale << "\t" << (gImperialUnits ? 1 : 0) << "\n";
+    int nEnt = 0;   // geometría tocable para acotar (aristas visibles y ocultas, círculos y arcos de las vistas)
+    for (auto& l : d.lines) if (l.g >= 0 && nEnt < 6000 && (l.type == LineType::Hidden || (l.type == LineType::Continuous && l.width >= 0.34)) && std::hypot(l.x2 - l.x1, l.y2 - l.y1) > 0.3) { o << "LINEA\t" << page << "\t" << l.g << "\t" << l.x1 << "\t" << l.y1 << "\t" << l.x2 << "\t" << l.y2 << "\n"; nEnt++; }
+    for (auto& a : d.arcs) if (a.g >= 0 && nEnt < 6000 && a.type != LineType::Center && a.width >= 0.2 && a.r > 0.2) { o << "ARCO\t" << page << "\t" << a.g << "\t" << a.cx << "\t" << a.cy << "\t" << a.r << "\t" << a.a0 << "\t" << a.a1 << "\n"; nEnt++; }
     for (size_t g = 0; g < d.groups.size(); g++) {
         const Box b = groupBox(d, (int)g);
         if (b.ok()) o << "GRUPO\t" << page << "\t" << g << "\t" << d.groups[g] << "\t" << b.x0 << "\t" << b.y0 << "\t" << b.x1 << "\t" << b.y1 << "\n";
     }
+    for (size_t g = 0; g < d.groups.size(); g++) if (d.groups[g] == "Línea")   // extremos de las líneas del usuario (asas)
+        for (auto& l : d.lines) if (l.g == (int)g) { o << "EXTREMOS\t" << page << "\t" << g << "\t" << l.x1 << "\t" << l.y1 << "\t" << l.x2 << "\t" << l.y2 << "\n"; break; }
     for (size_t i = 0; i < d.texts.size(); i++) {
         const Text& t = d.texts[i];
         if (!visibleText(t)) continue;
