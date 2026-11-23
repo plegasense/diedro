@@ -3,7 +3,7 @@ Copyright (C) 2026 Plegasense. Licencia: GNU GPL v3.0 o posterior (ver LICENSE).
 Contacto: plegasense@gmail.com
 
 Componentes de terceros:
-- Open CASCADE Technology 7.9.x — LGPL 2.1 con excepción OCCT (https://dev.opencascade.org; textos en LICENSES/LGPL-2.1.txt y LICENSES/OCCT-LGPL-exception.txt). Enlazado estáticamente y sin modificar;
+- Open CASCADE Technology 7.9.3 — LGPL 2.1 con excepción OCCT (https://dev.opencascade.org; textos en LICENSES/LGPL-2.1.txt y LICENSES/OCCT-LGPL-exception.txt). Enlazado estáticamente y sin modificar;
   el código fuente de Diedro permite reenlazar con otra versión de OCCT.
 - osifont (variante osifont-lgpl3fe, subconjunto, con 7 glifos propios) — GNU LGPL v3 con excepción de fuente GPL: los documentos (PDF) que incrustan la fuente
   no quedan cubiertos por la GPL por ello. Fuente: https://hikikomori82.github.io/osifont/ (textos en LICENSES/LGPL-3.0.txt y LICENSES/osifont-NOTICE.txt)
@@ -11,6 +11,7 @@ Componentes de terceros:
 - LLVM libc++ (NDK) — Apache License 2.0 con excepción LLVM (LICENSES/LLVM-libcxx-LICENSE.txt).
 - Flutter, Dart y paquetes de pub — BSD-3-Clause, MIT, Apache 2.0 y otras permisivas; textos y avisos completos en LICENSES/THIRD_PARTY_NOTICES-flutter.txt (el mismo fichero va dentro del APK).
 - AndroidX (androidx.*) y kotlinx-coroutines / Kotlin runtime (Apache License 2.0; Copyright The Android Open Source Project y JetBrains s.r.o.). Texto en LICENSES/Apache-2.0.txt.
+- ReLinker (Keepsafe) y fuente Material Icons (Google) — Apache License 2.0 (texto en LICENSES/Apache-2.0.txt).
 - Plantilla DXF R2000 (core/src/dxf_skel.inc) — derivada de la salida de ezdxf, MIT License, Copyright (c) 2020 Manfred Moitzi (https://github.com/mozman/ezdxf).
 
 ezdxf — MIT License

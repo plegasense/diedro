@@ -1,3 +1,4 @@
+// Plantilla derivada de la salida de ezdxf — MIT License, Copyright (c) 2020 Manfred Moitzi (https://github.com/mozman/ezdxf). Texto completo en NOTICE.
 static const char kDxfSkel[] = R"DXF(  0
 SECTION
   2

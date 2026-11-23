@@ -1,5 +1,7 @@
 # Diedro — Privacy policy / Política de privacidad
 
+Controller / Responsable: Plegasense — plegasense@gmail.com
+
 ## English
 
 **Diedro does not collect, share or transmit any personal or usage data.**
