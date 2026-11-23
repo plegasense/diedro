@@ -2,7 +2,7 @@
 
 Requisitos: Android SDK/NDK r28, JDK 17+, Gradle 9, Flutter 3.47 (canal stable, con Flutter GPU) y CMake 3.22.1. Diedro usa **OpenCASCADE 7.9.3 (etiqueta `V7_9_3`) sin modificar**, estático para android-arm64.
 
-0. OCCT: `git clone --branch V7_9_3 https://github.com/Open-Cascade-SAS/OCCT <carpeta>` (sin modificar) y `OCCT_SRC=<carpeta> tools/build_occt_android.sh` (parámetros exactos de Diedro; tarda un buen rato).
+0. OCCT: `git clone --branch V7_9_3 https://github.com/Open-Cascade-SAS/OCCT <carpeta>` (sin modificar; alternativa: el mismo código fuente en https://github.com/plegasense/diedro/releases/download/v0.1.0-vc8/OCCT-7.9.3-V7_9_3.tar.gz, SHA-256 `5ecf094ec6b12d5413dfb851d8c3590c354058aee556e32e408bdfbf8c357d57`) y `OCCT_SRC=<carpeta> tools/build_occt_android.sh` (parámetros exactos de Diedro; tarda un buen rato).
 1. `android/local.properties`: `sdk.dir=<ruta SDK>` y `occt.dir=<carpeta install de OCCT arm64>`.
 2. Visor: `cd visor/app && flutter build aar --release --target-platform android-arm64 --no-debug --no-profile` (genera el repositorio Maven local que usa `android/settings.gradle.kts`).
 3. APK: `cd android && gradle assembleRelease`. Sin `claves/keystore.properties` el APK sale sin firmar.
