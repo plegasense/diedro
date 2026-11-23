@@ -43,11 +43,12 @@ const char* layerOf(LineType t, double w) {
     return w >= 0.5 ? "CONTORNO" : "FINA";
 }
 
-// Símbolos habituales en planos (griego, flechas, signos) -> ASCII, porque un DXF R12 no garantiza la secuencia \U+XXXX
+// Símbolos habituales en planos (griego, flechas, signos) -> ASCII, porque no todo lector DXF (fichero AC1015) interpreta la secuencia \U+XXXX
 const char* ascii(unsigned cp) {
     switch (cp) {
         case 0x2013: case 0x2014: case 0x2212: return "-";
         case 0x21A7: return "prof. "; case 0x2192: return "->"; case 0x2190: return "<-"; case 0x2264: return "<="; case 0x2265: return ">="; case 0x2248: return "~";
+        case 0x2334: return "cbore "; case 0x2335: return "csink ";   // ⌴ ⌵: sin fuente que los dibuje en todo CAD → palabra ASME (decisión propia)
         case 0x2026: return "..."; case 0x2018: case 0x2019: return "'"; case 0x201C: case 0x201D: return "\"";
         case 0x03B1: return "alfa"; case 0x03B2: return "beta"; case 0x03B3: return "gamma"; case 0x03B4: return "delta"; case 0x03B8: return "theta";
         case 0x03BB: return "lambda"; case 0x03BC: return "mu"; case 0x03C0: return "pi"; case 0x03C6: return "phi"; case 0x03C9: return "omega";
@@ -56,7 +57,7 @@ const char* ascii(unsigned cp) {
     }
 }
 
-// UTF-8 -> texto DXF R12: ASCII con %%c (Ø) %%d (°) %%p (±); el resto como \U+XXXX
+// UTF-8 -> texto DXF AC1015: ASCII con %%c (Ø) %%d (°) %%p (±); el resto como \U+XXXX
 std::string dxfText(const std::string& s) {
     std::string r;
     for (size_t i = 0; i < s.size();) {
@@ -67,7 +68,7 @@ std::string dxfText(const std::string& s) {
         else if (cp == 0x00D7) r += 'x';   // × -> x: algunos lectores no combinan \\U+ con %%d (1×45°)
         else if (cp >= 32 && cp < 127) { if (cp == '%') r += "%%%"; else r += (char)cp; }
         else if (cp == '\t') r += ' ';
-        else if (const char* a = ascii(cp)) r += a;   // R12 no define \U+: lo habitual se pasa a ASCII legible
+        else if (const char* a = ascii(cp)) r += a;   // no todo lector entiende \U+: lo habitual se pasa a ASCII legible
         else if (cp >= 0xA0 && cp <= 0xFF) r += (char)cp;   // Latin-1 = cp1252: byte directo (cabecera $DWGCODEPAGE ANSI_1252)
         else if (cp >= 128) { char b[16]; std::snprintf(b, sizeof b, "\\U+%04X", cp); r += b; }
     }
@@ -137,7 +138,8 @@ void hatchEnt(Dxf& d, const std::vector<const Poly*>& loops) {
 }
 }  // namespace
 
-std::string toDxf(const Drawing& dr, bool shade) {
+std::string toDxf(const Drawing& dr0, bool shade) {
+    Drawing dr = dr0; mergeHidden(dr.lines);
     Dxf d;
     // tablas propias (LTYPE, LAYER) con los handles siguientes a los del esqueleto
     ltype(d, "HIDDEN", "Hidden __ __ __", {kHid, -kHidGap});
@@ -222,7 +224,8 @@ std::string b64(const unsigned char* p, size_t n) {
 }
 }  // namespace
 
-std::string toSvg(const Drawing& dr, bool embedFont) {
+std::string toSvg(const Drawing& dr0, bool embedFont) {
+    Drawing dr = dr0; mergeHidden(dr.lines);
     std::ostringstream o;
     const double H = dr.sheetH;
     o << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"" << f(dr.sheetW) << "mm\" height=\"" << f(H) << "mm\" viewBox=\"0 0 " << f(dr.sheetW) << " " << f(H) << "\">\n";

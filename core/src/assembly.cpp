@@ -2,6 +2,8 @@
 // Copyright (C) Plegasense
 #include "assembly.hpp"
 #include "iso.hpp"
+#include <atomic>
+std::atomic<int> gLiveWorkers{0};
 #include <cctype>
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepBndLib.hxx>
@@ -51,6 +53,7 @@
 #include <future>
 #include <memory>
 #include <thread>
+#include <atomic>
 #include <map>
 #include <functional>
 #include <queue>
@@ -159,7 +162,8 @@ bool isSolidRod(const TopoDS_Shape& sh) {
     GProp_GProps g; BRepGProp::VolumeProperties(sh, g);
     return g.Mass() >= 0.5 * w * w * e[L];
 }
-std::string fmtMm(double v) {
+std::string fmtMm(double v, bool imp = false) {
+    if (imp) return fmtIn(v);   // pulgadas: 3 decimales fijos (ASME Y14.5 §4.3.2)
     char b[32]; std::snprintf(b, sizeof b, std::fabs(v - std::round(v)) < 0.05 ? "%.0f" : "%.1f", v);
     std::string r = b; for (auto& c : r) if (c == '.') c = ',';
     return r;
@@ -193,7 +197,7 @@ void disc(Drawing& d, double x, double y, double r, bool white) {
 Drawing drawPart(const std::string& path, const Meta& meta, std::string& err) {
     Profile p = analyzeStep(path);
     Drawing d;
-    { gCamStrict = true; const bool ok = layoutSpring(path, meta, d) || layoutCamshaft(path, meta, d) || layoutCam(path, meta, d); gCamStrict = false;   // muelles y levas sueltas dentro del conjunto: mismo motor que la pieza suelta
+    { const bool ok = [&] { CamGuard cg; return layoutSpring(path, meta, d) || layoutCamshaft(path, meta, d) || layoutCam(path, meta, d); }();   // muelles y levas sueltas dentro del conjunto: mismo motor que la pieza suelta
       if (ok) { addIsoStep(d, path); return d; } }
     d = Drawing();
     bool prism = false;
@@ -256,6 +260,17 @@ static double axisLengthSlender(const TopoDS_Shape& sh, double dmin, std::array<
     return L;
 }
 
+
+// F4: la OBB aproximada puede salir mayor que la caja alineada; una pieza nunca mide más que su AABB (h en orden descendente)
+static void clampToAabb(const TopoDS_Shape& sh, double h[3]) {
+    Bnd_Box bb; BRepBndLib::AddOptimal(sh, bb, false, false);
+    if (bb.IsVoid()) return;
+    double x0, y0, z0, x1, y1, z1; bb.Get(x0, y0, z0, x1, y1, z1);
+    double a[3] = {x1 - x0, y1 - y0, z1 - z0};
+    std::sort(a, a + 3, [](double p, double q) { return p > q; });
+    for (int i = 0; i < 3; i++) h[i] = std::min(h[i], a[i]);
+}
+
 std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, const std::string& tmpDir, std::string& err, int knownParts) {
     std::vector<Drawing> out;
     if (knownParts > 400) { err = "Conjunto demasiado grande para esta versión (" + std::to_string(knownParts) + " piezas)."; return out; }  // antes de leer otra vez el STEP
@@ -295,9 +310,10 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
             TopoDS_Shape ps = datum_part_shape_cpp(sc, part);
             pi.shape = ps;
             if (!ps.IsNull()) {
-                Bnd_OBB ob; BRepBndLib::AddOBB(ps, ob, false, false, false);
+                Bnd_OBB ob; BRepBndLib::AddOBB(ps, ob, false, true, false);
                 double h[3] = {2 * ob.XHSize(), 2 * ob.YHSize(), 2 * ob.ZHSize()};
                 std::sort(h, h + 3, [](double a, double b) { return a > b; });
+                clampToAabb(ps, h);
                 for (int k = 0; k < 3; k++) pi.dim[k] = h[k];
             }
             infoOf[part] = (int)infos.size();
@@ -317,9 +333,10 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
         for (TopExp_Explorer e(whole, TopAbs_SOLID); e.More(); e.Next()) {
             const TopoDS_Shape so = e.Current();
             const std::array<double, 2>& ms = massOf(so);
-            Bnd_OBB ob; BRepBndLib::AddOBB(so, ob, false, false, false);
+            Bnd_OBB ob; BRepBndLib::AddOBB(so, ob, false, true, false);
             double h[3] = {2 * ob.XHSize(), 2 * ob.YHSize(), 2 * ob.ZHSize()};
             std::sort(h, h + 3);
+            { double hd[3] = {h[2], h[1], h[0]}; clampToAabb(so, hd); h[0] = hd[2]; h[1] = hd[1]; h[2] = hd[0]; }
             char key[160]; std::snprintf(key, sizeof key, "%.2f|%.1f|%.1f|%.1f|%.1f", ms[0], ms[1], h[0], h[1], h[2]);
             auto it = seen.find(key);
             int ii;
@@ -429,10 +446,11 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
     // formato y escala: primera hoja donde cabe a escala ≥ 1:2 (la última, lo que quepa)
     const size_t rows = infos.size();
     int chosen = -1; double sc_ = 0; int nblk = 1; size_t perBlk = 0; bool wide = false;
+    bool fmtGrown = false;
     int forced = -1;  // formato elegido por el usuario: solo ese (si no cabe, se avisa y se elige solo)
     for (int si = 0; si < 5; si++) if (meta.sheet == kSheets[si].name) forced = si;
     for (int pass = 0; pass < 2 && chosen < 0; pass++) {
-      if (pass == 1) { if (forced < 0) break; forced = -1; warns.push_back(T("El formato elegido es pequeño para esta pieza: el plano queda denso; elige un formato mayor o Automático.")); }
+      if (pass == 1) { if (forced < 0) break; forced = -1; fmtGrown = true; }
     for (int si = 0; si < 5 && chosen < 0; si++) {
         if (forced >= 0 && si != forced) continue;
         const Sheet& sh = kSheets[si];
@@ -452,6 +470,11 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
     }
     }
     if (chosen < 0) { err = "El conjunto no cabe en ningún formato estándar."; return out; }
+    if (fmtGrown) {   // H3: el aviso dice el formato y la escala reales
+        std::string w = T("El formato elegido es pequeño para esta pieza; se usa {0} a escala {1}.");
+        for (const char* ph : {"{0}", "{1}"}) { const size_t k = w.find(ph); if (k != std::string::npos) w.replace(k, 3, ph[1] == '0' ? std::string(kSheets[chosen].name) : scaleText(sc_)); }
+        warns.push_back(w);
+    }
     const Sheet& sh = kSheets[chosen];
     Drawing A;
     A.sheetW = sh.w; A.sheetH = sh.h; A.sheetName = sh.name; A.scale = sc_;
@@ -575,7 +598,11 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
         const Pos pB = A.pos();
         for (auto& x : bl[v]) {
             const double dx = x.ax - x.bx, dy = x.ay - x.by, n = std::hypot(dx, dy);
-            if (n > 1e-6) line(A, x.bx + dx / n * kBalloonR, x.by + dy / n * kBalloonR, x.ax, x.ay, 0.25);
+            if (n > 1e-6 && v == 2) {   // M5: sobre la isométrica sombreada las líneas se pintan antes que los polígonos y quedaban tapadas: la llamada va como polígono fino (se pinta después)
+                const double x0 = x.bx + dx / n * kBalloonR, y0 = x.by + dy / n * kBalloonR, nx = -dy / n * 0.125, ny = dx / n * 0.125;
+                Poly lp; lp.pts = {{x0 + nx, y0 + ny}, {x.ax + nx, x.ay + ny}, {x.ax - nx, x.ay - ny}, {x0 - nx, y0 - ny}};
+                A.polys.push_back(lp);
+            } else if (n > 1e-6) line(A, x.bx + dx / n * kBalloonR, x.by + dy / n * kBalloonR, x.ax, x.ay, 0.25);
             if (v < 2 && n > 1e-6) {  // ISO 128-22: en vistas ortogonales la llamada acaba sobre un contorno -> flecha rellena; en la isométrica (superficie) -> punto
                 const double ux = -dx / n, uy = -dy / n;   // de la punta hacia el globo
                 Poly ar; ar.pts = {{x.ax, x.ay}, {x.ax + ux * 3 - uy * 0.4, x.ay + uy * 3 + ux * 0.4}, {x.ax + ux * 3 + uy * 0.4, x.ay + uy * 3 - ux * 0.4}};
@@ -621,8 +648,19 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
             text(A, xs[2] + 1, y, 2.5, std::to_string(pi.qty));
             if (pi.mat.empty()) text(A, xs[3] + 1, y, 2.5, T("NO DEFINIDO"), true); else text(A, xs[3] + 1, y, 2.5, fit(pi.mat, 2.5, kColW[3] - 2));
             const double u = meta.imperial ? 1 / 25.4 : 1;
-            auto f1 = [&](double v) { char b[24]; std::snprintf(b, sizeof b, meta.imperial ? "%.2f" : "%.1f", v * u); std::string s = b; if (!meta.imperial && s.size() > 2 && s.substr(s.size() - 2) == ".0") s.resize(s.size() - 2); return s; };
-            text(A, xs[4] + 1, y, 2.5, fit(f1(pi.dim[0]) + "×" + f1(pi.dim[1]) + "×" + f1(pi.dim[2]), 2.5, kColW[4] - 2));
+            auto f1 = [&](double v) { return fmtMm(v, meta.imperial); };
+            std::string dimTxt = f1(pi.dim[0]) + "×" + f1(pi.dim[1]) + "×" + f1(pi.dim[2]);
+            {   // cilindro macizo (dos lados iguales y volumen = π/4·Ø²·L): «Ø d×L» (ISO 129-1 §7.1; decisión propia: m9 ronda 5)
+                double a[3] = {pi.dim[0], pi.dim[1], pi.dim[2]};
+                int ax = -1;
+                for (int k = 0; k < 3 && ax < 0; k++) { const double p = a[(k + 1) % 3], q = a[(k + 2) % 3]; if (p > 0 && std::fabs(p - q) < 0.01 * p) ax = k; }
+                if (ax >= 0) {
+                    GProp_GProps gv; BRepGProp::VolumeProperties(pi.shape, gv);
+                    const double dd = a[(ax + 1) % 3], L = a[ax];
+                    if (std::fabs(gv.Mass() - M_PI / 4 * dd * dd * L) < 0.02 * gv.Mass()) dimTxt = "Ø" + f1(dd) + "×" + f1(L);
+                }
+            }
+            text(A, xs[4] + 1, y, 2.5, fit(dimTxt, 2.5, kColW[4] - 2));
             {   // pieza esbelta y curva (cable/manguera): longitud del eje por geodésica de malla (ISO 129-1 §7.15; método = decisión propia)
                 const double dmin = std::min({pi.dim[0], pi.dim[1], pi.dim[2]}), dmax = std::max({pi.dim[0], pi.dim[1], pi.dim[2]});
                 if (dmin > 0 && dmax >= 8 * dmin && dmax >= 40) {
@@ -653,7 +691,7 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
     size_t total = 0; for (auto& pi : infos) total += pi.qty;
     field(bx0, fy0 + 24, T("Conjunto"), meta.title);
     field(s1, fy0 + 24, T("N.° de plano"), meta.partNo);
-    field(bx0, fy0 + 12, T("Piezas"), std::to_string(infos.size()) + " / " + std::to_string(total));
+    field(bx0, fy0 + 12, T("Piezas"), std::to_string(infos.size()) + " " + T("Pos.") + " / " + std::to_string(total));
     field(s2, fy0 + 12, T("Tolerancia general"), meta.generalTolerance);
     text(A, bx0 + 1.5, fy0 + 7.8, 2.2, T("Escala")); text(A, bx0 + 1.5, fy0 + 2, 3.5, scaleText(sc_));
     text(A, s2 + 1.5, fy0 + 7.8, 2.2, T("Formato")); text(A, s2 + 1.5, fy0 + 2, 3.5, A.sheetName);
@@ -842,9 +880,20 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
         for (int v = 0; v < 3; v++) drawBalloons(A, v);
         {   // cotas totales (ISO 129-1): ancho y alto en el alzado, fondo en la planta; cada una en el primer lado donde no tropiece con textos
             struct Try { bool hor; double u0, u1, lo, hi; std::string s; };   // lo/hi = bordes de la vista en la dirección de la cota
-            const Try tr[3] = {{true, vb[0][0], vb[0][2], vb[0][1], vb[0][3], fmtMm(Wf)}, {false, vb[0][1], vb[0][3], vb[0][0], vb[0][2], fmtMm(Hf)}, {false, vb[1][1], vb[1][3], vb[1][0], vb[1][2], fmtMm(Hp)}};
+            const Try tr[3] = {{true, vb[0][0], vb[0][2], vb[0][1], vb[0][3], fmtMm(Wf, meta.imperial)}, {false, vb[0][1], vb[0][3], vb[0][0], vb[0][2], fmtMm(Hf, meta.imperial)}, {false, vb[1][1], vb[1][3], vb[1][0], vb[1][2], fmtMm(Hp, meta.imperial)}};
             for (int ti = 0; ti < 3; ti++) {
                 const Try& t = tr[ti];
+                // ISO 129-1 §5.1: una misma medida no se acota dos veces; en una vista redonda ancho y alto son la misma cota (Ø), en una cuadrada son dos distintas
+                auto round = [&](int v) {
+                    const double w = vb[v][2] - vb[v][0], h = vb[v][3] - vb[v][1], rr = 0.5 * std::min(w, h);
+                    if (std::fabs(w - h) > 0.01 * std::max(w, h)) return false;
+                    for (const Arc& ar : A.arcs) if (std::fabs(ar.cx - 0.5 * (vb[v][0] + vb[v][2])) < 0.01 * w && std::fabs(ar.cy - 0.5 * (vb[v][1] + vb[v][3])) < 0.01 * h && std::fabs(ar.r - rr) < 0.01 * rr && std::fabs(ar.a1 - ar.a0) >= 359) return true;
+                    const double cx = 0.5 * (vb[v][0] + vb[v][2]), cy = 0.5 * (vb[v][1] + vb[v][3]); int n = 0;   // contorno poligonal: ≥24 segmentos con ambos extremos sobre la circunferencia
+                    for (const Line& l : A.lines) if (std::fabs(std::hypot(l.x1 - cx, l.y1 - cy) - rr) < 0.015 * rr && std::fabs(std::hypot(l.x2 - cx, l.y2 - cy) - rr) < 0.015 * rr) n++;
+                    return n >= 24;
+                };
+                if (ti == 1 && tr[1].s == tr[0].s && round(0)) continue;
+                if (ti == 2 && (tr[2].s == tr[0].s || tr[2].s == tr[1].s) && round(1)) continue;
                 for (double off : {9.0, -9.0, 15.0, -15.0, 21.0, -21.0}) {
                     const double ref = off > 0 ? t.hi : t.lo, c = ref + off;
                     if (t.hor ? (c < fy0 + 2 || c > fy1 - 2) : (c < fx0 + 2 || c > fx1 - 2)) continue;
@@ -871,7 +920,25 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
     std::stable_sort(order.begin(), order.end(), [](const PartInfo* a, const PartInfo* b) { return a->dim[0] * a->dim[1] * a->dim[2] > b->dim[0] * b->dim[1] * b->dim[2]; });
     std::vector<Drawing> sheets(infos.size());
     std::vector<char> made(infos.size(), 0);
-    size_t nMade = 0; int facesDone = 0;
+    size_t nMade = 0; int facesDone = 0; bool stuck = false;
+    struct Res { Drawing d; std::string e; };
+    struct Pend { std::future<Res> fu; const PartInfo* pi = nullptr; Meta pm; bool on = false; } pend;   // M2: pieza que pasó el límite pero acaba durante la espera de la siguiente: no se tira su resultado
+    auto finish = [&](Res rr, const PartInfo& pi, const Meta& pm) {
+        if (rr.e == "~skip") return;
+        Drawing d = rr.d;
+        std::string e = rr.e;
+        if (!e.empty()) {
+            e = tr(e, lang);   // M1: en el idioma elegido y con marco (antes salía en español y sin marco)
+            d = Drawing(); d.sheetName = "A4"; d.sheetW = 297; d.sheetH = 210;
+            for (auto& q : std::vector<std::array<double, 4>>{{10, 10, 287, 10}, {287, 10, 287, 200}, {287, 200, 10, 200}, {10, 200, 10, 10}}) d.lines.push_back({q[0], q[1], q[2], q[3], LineType::Continuous, 0.7});
+            text(d, 25, 100, 5, pm.title);
+            text(d, 25, 90, 4, fit(e, 4, 240), true);
+            d.warnings.push_back(e);
+        }
+        d.label = pm.title;
+        sheets[pi.pos - 1] = d; made[pi.pos - 1] = 1; nMade++;
+    };
+    auto collect = [&]() { if (pend.on && pend.fu.wait_for(std::chrono::seconds(0)) == std::future_status::ready) { pend.on = false; finish(pend.fu.get(), *pend.pi, pend.pm); } };
     for (const PartInfo* pp : order) {
         const PartInfo& pi = *pp;
         if (nMade >= kMaxParts) continue;
@@ -888,13 +955,20 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
         if (pm.title.size() > 34) { size_t k = 31; while (k > 0 && (static_cast<unsigned char>(pm.title[k]) & 0xC0) == 0x80) k--; pm.title = pm.title.substr(0, k) + "..."; }
         pm.partNo.clear();
         pm.material = pi.mat;
-        const std::string f = tmpDir + "/diedro_pos" + std::to_string(pi.pos) + ".step";
+        static std::atomic<unsigned> genSeq{0};  // S1: nombre único por pieza y generación (un hilo abandonado no pisa el STEP de la siguiente)
+        const std::string f = tmpDir + "/diedro_pos" + std::to_string(pi.pos) + "_" + std::to_string(genSeq++) + ".step";
         // la hoja se dibuja en un hilo con límite de tiempo: si el motor de pieza tarda, se abandona y se avisa
-        struct Res { Drawing d; std::string e; };
-        auto pr = std::make_shared<std::promise<Res>>();
+        // S-A: gLiveWorkers (global, assembly.hpp): hilos de pieza vivos; si uno se abandonó por tiempo sigue usando globales del motor, así que no se lanza otro en paralelo (la pieza queda «sin hoja» y se avisa)
+        for (int w = 0; w < (stuck ? 0 : (int)(kGuard * 10)) && gLiveWorkers.load() > 0; w++) std::this_thread::sleep_for(std::chrono::milliseconds(100));   // M1: espera a la pieza lenta anterior en vez de dejar sin hoja a todas las siguientes
+        collect();
+        if (gLiveWorkers.load() > 0) { stuck = true; continue; }   // una espera completa ya falló: no se vuelve a esperar por cada pieza
+        gLiveWorkers++;
+        std::shared_ptr<std::promise<Res>> pr;
+        try { pr = std::make_shared<std::promise<Res>>(); } catch (...) { gLiveWorkers--; continue; }   // B2
         auto fu = pr->get_future();
-        std::thread([pr, shape = pi.shape, f, pm, camOnly] {
+        try { std::thread([pr, shape = pi.shape, f, pm, camOnly] {
             Res r;
+            try {
             bool ok = false;
             if (!shape.IsNull()) {
                 auto t0 = std::chrono::steady_clock::now();
@@ -908,24 +982,18 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
             else if (dcl.error.empty() && dcl.discard >= 3 && dcl.discard <= 5) { { std::string nm = pm.title; std::replace(nm.begin(), nm.end(), '/', '-'); r.d = layoutDiscard(dcl, pm, nm); } r.d.warnings.push_back(reasonTr(dcl.reason, pm.lang)); }   // G15: solo esta pieza se descarta; el resto del conjunto se dibuja
             else if (camOnly) { const auto tc = std::chrono::steady_clock::now(); Profile gp; const Classification cl = classifyStep(f); bool okc = cl.error.empty() && (cl.group == 6 || cl.group == 0) && layoutGear(f, pm, gp, r.d); if (!okc) { gCamshaftMinLobes = 1; okc = layoutCamshaft(f, pm, r.d); gCamshaftMinLobes = 2; } if (!okc) r.d = drawPart(f, pm, r.e); if (std::getenv("DIEDRO_DBG")) std::fprintf(stderr, "ASM pesada %s ok=%d %.1fs\n", f.c_str(), (int)okc, std::chrono::duration<double>(std::chrono::steady_clock::now() - tc).count()); }
             else { auto t0 = std::chrono::steady_clock::now(); r.d = drawPart(f, pm, r.e); if (std::getenv("DIEDRO_DBG")) std::fprintf(stderr, "ASM drawPart %s %.1fs\n", f.c_str(), std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count()); }
+            } catch (const std::exception& ex) { r.e = std::string("Error al dibujar la pieza: ") + ex.what(); r.d = Drawing(); }   // una excepción de OCCT no debe cerrar la app
+            catch (...) { r.e = "Error al dibujar la pieza."; r.d = Drawing(); }
             if (!std::getenv("DIEDRO_KEEP")) std::remove(f.c_str());
-            pr->set_value(std::move(r));
-        }).detach();
-        if (fu.wait_for(std::chrono::duration<double>(kGuard)) != std::future_status::ready) continue;  // solo guarda contra cuelgues
-        Res rr = fu.get();
-        if (rr.e == "~skip") continue;
-        Drawing d = rr.d;
-        std::string e = rr.e;
-        if (!e.empty()) {
-            d = Drawing();
-            text(d, 25, 100, 5, pm.title);
-            text(d, 25, 90, 4, e, true);
-            d.warnings.push_back(e);
-        }
+            pr->set_value(std::move(r));   // primero el resultado, luego el contador: si el contador llega a 0, el futuro ya está listo
+            gLiveWorkers--;
+        }).detach(); } catch (...) { gLiveWorkers--; continue; }   // B2: si no se crea el hilo, el contador no se queda en 1
+        if (fu.wait_for(std::chrono::duration<double>(kGuard)) != std::future_status::ready) { collect(); pend.fu = std::move(fu); pend.pi = &pi; pend.pm = pm; pend.on = true; continue; }  // solo guarda contra cuelgues
         if (dbg) { TopTools_IndexedMapOfShape fm; TopExp::MapShapes(pi.shape, TopAbs_FACE, fm); std::fprintf(stderr, "ASM pieza %d caras=%d t=%.1fs\n", pi.pos, (int)fm.Extent(), secs()); }
-        d.label = pm.title;
-        sheets[pi.pos - 1] = d; made[pi.pos - 1] = 1; nMade++;
+        finish(fu.get(), pi, pm);
     }
+    for (int w = 0; pend.on && w < 50 && gLiveWorkers.load() > 0; w++) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    collect();
     for (size_t i = 0; i < infos.size(); i++) if (made[i]) out.push_back(sheets[i]);
     if (nMade < infos.size()) {  // el aviso va en la hoja del conjunto (ya en out[0])
         std::string h;

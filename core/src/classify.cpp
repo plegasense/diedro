@@ -1,3 +1,5 @@
+#include <fstream>
+#include <cctype>
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) Plegasense
 #include <sys/stat.h>
@@ -14,6 +16,7 @@
 #include <Bnd_OBB.hxx>
 #include <GProp_GProps.hxx>
 #include <IFSelect_ReturnStatus.hxx>
+#include <mutex>
 #include <STEPControl_Reader.hxx>
 #include <chrono>
 #include <cstdio>
@@ -110,6 +113,19 @@ static int independentParts(const TopoDS_Shape& shape) {
 }
 
 static double rmaxOf(const std::vector<F>& fs) { double r = 0; for (auto& f : fs) if (f.k == CYL) r = std::max(r, f.r); return r; }
+// coordenadas absurdas (puntos con exponente >= 9): OCCT no construye el sólido y el aviso «sin sólidos» engaña
+static bool hugeCoords(const std::string& path) {
+    std::ifstream f(path); std::string l;
+    while (std::getline(f, l)) {
+        if (l.find("CARTESIAN_POINT") == std::string::npos) continue;
+        for (size_t i = 0; i + 1 < l.size(); i++) if ((l[i] == 'E' || l[i] == 'e') && i > 0 && (std::isdigit((unsigned char)l[i-1]) || l[i-1] == '.')) {
+            size_t j = i + 1; if (j < l.size() && (l[j] == '+' || l[j] == '-')) { if (l[j] == '-') continue; j++; }
+            int ex = 0; while (j < l.size() && std::isdigit((unsigned char)l[j])) ex = ex * 10 + (l[j++] - '0');
+            if (ex >= 9) return true;
+        }
+    }
+    return false;
+}
 static Classification classifyStepRaw(const std::string& path) {
     Classification C;
     const auto T0 = std::chrono::steady_clock::now();
@@ -120,10 +136,10 @@ static Classification classifyStepRaw(const std::string& path) {
     rd.TransferRoots();
     TS("transfer");
     TopoDS_Shape shape = rd.OneShape();
-    if (shape.IsNull()) { C.error = "El STEP no contiene ningún sólido."; C.group = 15; C.discard = 2; return C; }
+    if (shape.IsNull()) { C.error = "El STEP no contiene ningún sólido."; C.group = 15; C.discard = 2; if (hugeCoords(path)) C.reason = "coord > 1e9 mm"; return C; }
     int nSol = 0;
     for (TopExp_Explorer e(shape, TopAbs_SOLID); e.More(); e.Next()) nSol++;
-    if (!nSol) { C.error = "El STEP no contiene ningún sólido."; C.group = 15; C.discard = 2; return C; }
+    if (!nSol) { C.error = "El STEP no contiene ningún sólido."; C.group = 15; C.discard = 2; if (hugeCoords(path)) C.reason = "coord > 1e9 mm"; return C; }
     int nParts = nSol > 1 ? independentParts(shape) : 1;
     TS("parts");
     C.nParts = nParts;
@@ -331,8 +347,11 @@ static Classification classifyStepRaw(const std::string& path) {
     const double draftF = draft / A;
 
     // grupo de caras congruentes y repartidas en corona alrededor del eje (dientes, levas)
-    int rep = 0;
-    if (bestRev > 0) {
+    int rep = 0; bool threadRep = false;
+    // sin cilindros/conos (helicoidal con flancos B-spline): eje = el de menor espesor si la pieza es un disco
+    const bool discLike = bestRev <= 0 && a0 > 0 && b0 >= 0.85 * a0 && c0 <= 0.8 * b0;
+    if (discLike) { bo = ob.Center(); bd = Tdir; }
+    if (bestRev > 0 || discLike) {
         std::vector<std::pair<double, double>> v;  // área, distancia al eje
         for (auto& f : fs) {
             if (f.k == CYL || f.k == SPH || f.k == TOR || f.k == CONE) continue;
@@ -342,7 +361,13 @@ static Classification classifyStepRaw(const std::string& path) {
         for (size_t i = 0; i < v.size(); i++) {
             size_t j = i; double mn = v[i].second, mx = mn;
             while (j + 1 < v.size() && v[j + 1].first <= v[i].first * 1.005) { j++; mn = std::min(mn, v[j].second); mx = std::max(mx, v[j].second); }
-            if (mx > 0 && (mx - mn) / mx < 0.05 && v[i].first > 1e-9) rep = std::max(rep, (int)(j - i + 1));
+            if (mx > 0 && (mx - mn) / mx < 0.05 && v[i].first > 1e-9) {
+                // una rosca (caras helicoidales iguales repartidas a lo largo del eje de una pieza esbelta) no es una corona de dientes
+                double lo = 1e18, hi = -1e18; int nSpl = 0;
+                for (auto& f : fs) if (f.k != CYL && f.k != SPH && f.k != TOR && f.k != CONE && f.area >= v[i].first / 1.006 && f.area <= v[j].first * 1.006) { double z = gp_Vec(bo, f.c).Dot(gp_Vec(bd)); lo = std::min(lo, z); hi = std::max(hi, z); if (f.k == SPLINE) nSpl++; }
+                if (nSpl >= 6 && hi - lo > 0.5 * a0 && a0 > 1.8 * b0) { threadRep = true; continue; }
+                rep = std::max(rep, (int)(j - i + 1));
+            }
         }
     }
     // taladros cilíndricos paralelos al espesor (placas de utillaje)
@@ -389,6 +414,7 @@ static Classification classifyStepRaw(const std::string& path) {
             int bends = 0;
             for (size_t i = 0; i < fs.size() && !bends; i++) if (fs[i].k == CYL && fs[i].sweep < 330)
                 for (size_t j = 0; j < fs.size(); j++) if (j != i && fs[j].k == CYL && fs[j].sweep < 330 && ang(fs[i].n, fs[j].n) < 0.5 && gp_Lin(gp_Ax1(fs[i].o, fs[i].n)).Distance(fs[j].o) < 0.02 * t + 1e-4 && std::fabs(fs[j].r - fs[i].r - t) <= 0.2 * t) { bends++; break; }
+            if (bends) { int tors = 0; for (auto& f : fs) if (f.k == TOR) tors++; if (tors >= 2 && turn < 0.7) bends = 0; }   // tubo curvado: paredes concéntricas con codos toroidales (los plegados de chapa son cilíndricos), no es chapa
             if (bends && turn >= 0.7) { std::snprintf(b, sizeof b, "pieza embutida: pared %.2f mm, Ø%.0f (revolución con acuerdos concéntricos)", t, 2 * rmaxOf(fs)); disc(4, b); return C; }   // lata de fondo abombado
             if (bends) { std::snprintf(b, sizeof b, "chapa de %.2f mm con plegados concéntricos", t); disc(3, b); return C; }
             if (t < 0.1 && Ak[PLANE] >= 0.3 * A) { std::snprintf(b, sizeof b, "lámina de %.2f mm", t); disc(3, b); return C; }
@@ -413,7 +439,8 @@ static Classification classifyStepRaw(const std::string& path) {
     if (Ak[TOR] > 0 && cyl > 0.9 && distinctAx >= 2 && rmaxCyl / a0 < 0.3) { std::snprintf(b, sizeof b, "tubo con codos, %d direcciones", distinctAx); done(13, 0.8, b); return C; }
     // engranaje o leva: corona de caras iguales; muelle: pocas caras casi todas de forma libre
     if (rep >= 12 && rep * 14 >= (int)fs.size()) { std::snprintf(b, sizeof b, "%d caras iguales en corona", rep); done(6, std::min(1.0, rep / 24.0), b); return C; }
-    if (fs.size() <= 12 && oth > 0.7) { std::snprintf(b, sizeof b, "%zu caras, %.0f%% de forma libre (hélice)", fs.size(), oth * 100); done(6, 0.5, b); return C; }
+    if (threadRep && bestRev > 0) { std::snprintf(b, sizeof b, "pieza torneada con rosca modelada (caras helicoidales a lo largo del eje, %.0f%% de forma libre)", oth * 100); done(1, 0.7, b); return C; }
+    if (fs.size() <= 12 && oth > 0.6) { std::snprintf(b, sizeof b, "%zu caras, %.0f%% de forma libre (hélice)", fs.size(), oth * 100); done(6, 0.5, b); return C; }
     // perfil: sección constante a lo largo del eje mayor, con pocos cortes
     if (extrusion && !extOneR) {
         // un bloque corto con sección llena es igual de bien una pieza fresada: se dice y se ofrece la alternativa
@@ -430,8 +457,10 @@ static Classification classifyStepRaw(const std::string& path) {
         int ns = 0; double big = 0; for (auto& f : fs) if (f.k == SPLINE) { ns++; big = std::max(big, f.area); }
         if (ns <= 60 && big >= 0.08 * A) { std::snprintf(b, sizeof b, "cuerpo de forma libre (%.0f%%, %d caras spline) con planos y taladros mecanizados", Ak[SPLINE] / A * 100, ns); done(5, 0.62, b); return C; }
     }
-    if (turn >= 0.9) { std::snprintf(b, sizeof b, "%.0f%% del área es de revolución o frontal", turn * 100); done(1, (turn - 0.8) * 5, b); return C; }
-    if (turn >= 0.45 && bestRev / A >= 0.3) { std::snprintf(b, sizeof b, "%.0f%% de revolución + %.0f%% de otras caras", turn * 100, (1 - turn) * 100); done(3, 0.6, b); return C; }
+    double latExt = 0; for (int i = 0; i < 3; i++) if (ang(ax[i], bd) > 0.1) latExt = std::max(latExt, dim[i]);   // extensión lateral respecto al eje de revolución
+    const bool revSpans = latExt <= 0 || 2 * rmaxCyl >= 0.5 * latExt;   // una placa grande con taladros no es torneada: sus cilindros no abarcan la pieza
+    if (turn >= 0.9 && revSpans) { std::snprintf(b, sizeof b, "%.0f%% del área es de revolución o frontal", turn * 100); done(1, (turn - 0.8) * 5, b); return C; }
+    if (turn >= 0.45 && bestRev / A >= 0.3) { if ((1 - turn) * 100 < 0.5) std::snprintf(b, sizeof b, "%.2f%% de revolución + %.2f%% de otras caras", turn * 100, (1 - turn) * 100); else std::snprintf(b, sizeof b, "%.0f%% de revolución + %.0f%% de otras caras", turn * 100, (1 - turn) * 100);  /* m7 */ done(3, 0.6, b); return C; }
     if (c0 <= 0.25 * b0 && holesT >= 8 && pl >= 0.5) { std::snprintf(b, sizeof b, "placa (e/b=%.2f) con %d taladros", c0 / b0, holesT); done(11, 0.7, b); return C; }
     if (pl + cyl >= 0.6) { std::snprintf(b, sizeof b, "%.0f%% de planos, %.0f%% de cilindros", pl * 100, cyl * 100); done(2, pl + cyl - 0.5, b); return C; }
     std::snprintf(b, sizeof b, "ninguna regla da confianza (forma libre %.0f%%)", oth * 100);
@@ -458,10 +487,11 @@ bool chooseEnginePrism(const std::string& path, const Profile& p) {
 
 // El CLI y el motor piden la clasificación varias veces por fichero: la última se recuerda (misma ruta, tamaño y fecha).
 Classification classifyStep(const std::string& path) {
-    static std::string kPath, kStamp; static Classification kC;
+    static std::string kPath, kStamp; static Classification kC; static std::mutex kMu;   // B7: sin carreras entre hilos
+    std::lock_guard<std::mutex> lk(kMu);
     std::string stamp;
     struct stat st;
-    if (stat(path.c_str(), &st) == 0) stamp = std::to_string(st.st_size) + ":" + std::to_string((long long)st.st_mtime) + (std::getenv("DIEDRO_CLASSIFY_FEAT") ? "F" : "");
+    if (stat(path.c_str(), &st) == 0) stamp = std::to_string(st.st_size) + ":" + std::to_string((long long)st.st_mtime) + ":" + std::to_string((unsigned long long)st.st_ino) + (std::getenv("DIEDRO_CLASSIFY_FEAT") ? "F" : "");
     if (!stamp.empty() && path == kPath && stamp == kStamp) return kC;
     Classification c = classifyStepRaw(path);
     if (!stamp.empty()) { kPath = path; kStamp = stamp; kC = c; }

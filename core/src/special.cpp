@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <algorithm>
 #include <array>
+#include <mutex>
 #include <functional>
 #include <cmath>
 #include <cstdio>
@@ -43,19 +44,29 @@
 #include "projsym.hpp"
 #include "stack.hpp"
 
+namespace diedro { static double isoScaleDown(double x) {   // mayor escala normalizada ISO 5455 <= x
+    static const double k[] = {50, 20, 10, 5, 2, 1, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005};
+    for (double v : k) if (v <= x + 1e-9) return v;
+    return 0.005; } }
+
 namespace diedro {
 namespace {
 bool fail(int l) { if (std::getenv("DIEDRO_DBG")) std::fprintf(stderr, "special.cpp:%d\n", l); return false; }
 const double kPi = 3.14159265358979323846, kThick = 0.5, kThin = 0.25, kTxt = 3.5;
 std::string gL = "es";
 std::string T(const char* es) { return tr(es, gL); }
-std::string fmt(double v) {
+std::string fmtN(double v) {   // número sin unidad (ratios, recuentos)
     char b[32]; std::snprintf(b, sizeof b, "%.2f", v);
     std::string s = b;
     while (!s.empty() && s.back() == '0') s.pop_back();
     if (!s.empty() && s.back() == '.') s.pop_back();
+    if (s == "-0") s = "0";
     if (decimalComma(gL)) { auto i = s.find('.'); if (i != std::string::npos) s[i] = ','; }
     return s;
+}
+std::string fmt(double v) {   // longitud: mm, o pulgadas con 3 decimales fijos si meta.imperial (ASME Y14.5 §4.3.2)
+    if (!gImperialUnits) return fmtN(v);
+    return fmtIn(v);
 }
 std::string fmt1(double v) { char b[32]; std::snprintf(b, sizeof b, "%.1f", v); std::string s = b; if (s.size() > 2 && s.substr(s.size() - 2) == ".0") s.resize(s.size() - 2); if (decimalComma(gL)) { auto i = s.find('.'); if (i != std::string::npos) s[i] = ','; } return s; }
 
@@ -65,6 +76,7 @@ struct Mesh { std::vector<V3> v; std::vector<std::array<int, 3>> t; };
 bool readShape(const std::string& path, TopoDS_Shape& S) {
     // una lectura por fichero: muelle, leva, árbol de levas y leva 3D se prueban en cadena sobre el mismo STEP (ruta+tamaño+fecha)
     static std::string kPath; static long long kSize = -1, kTime = -1; static TopoDS_Shape kShape;
+    static std::mutex kMu; std::lock_guard<std::mutex> lk(kMu);   // S-A: un hilo abandonado y el siguiente no escriben la caché a la vez
     struct stat st; const bool ok = ::stat(path.c_str(), &st) == 0;
     if (ok && !kShape.IsNull() && path == kPath && (long long)st.st_size == kSize && (long long)st.st_mtime == kTime) { S = kShape; return true; }
     STEPControl_Reader rd;
@@ -101,7 +113,7 @@ void arrow(Drawing& d, double x, double y, double dx, double dy) {  // flecha ce
     Poly p; p.pts = {{x, y}, {x + dx * L - dy * W, y + dy * L + dx * W}, {x + dx * L + dy * W, y + dy * L - dx * W}};
     d.polys.push_back(p);
 }
-std::string scaleText(double s) { return s >= 1 ? fmt(s) + ":1" : "1:" + fmt(1 / s); }
+std::string scaleText(double s) { return s >= 1 ? fmtN(s) + ":1" : "1:" + fmtN(1 / s); }
 
 struct Frame { double fx0, fy0, fx1, fy1, s, zx0, zy0, zx1, zy1; };
 // Elige hoja y escala para que quepan las vistas (needW × needH en mm de modelo, más mw × mh mm de hoja para cotas) y dibuja marco, cajetín y notas.
@@ -129,6 +141,19 @@ Frame makeSheet(Drawing& d, const Meta& meta, double needW, double needH, double
         sh = &c;
         if (s >= (minS < 1 ? 1.0 : minS) || forced) break;
     }
+    if (forced && (s == 0 || s < 0.5) && !meta.sheet.empty()) {   // m1/F3: el formato elegido no da ni 1:2: se usa el menor formato mayor que sí lo da (o el automático) y se avisa con el formato real
+        Meta m2 = meta; m2.sheet.clear();
+        for (auto& c : kSheets) {
+            const double zw = c.w - margL - margO - 30, zh = c.h - 2 * margO - titleH - notesH - 12; bool fit = false;
+            for (double k : kScales) if (k >= 0.5 && k <= 20 && k * needW + mw <= zw && k * needH + mh <= zh) { fit = true; break; }
+            if (fit) { m2.sheet = c.name; break; }
+        }
+        Frame f2 = makeSheet(d, m2, needW, needH, mw, mh, notes, minS);
+        std::string w = T("El formato elegido es pequeño para esta pieza; se usa {0} a escala {1}.");
+        for (const char* ph : {"{0}", "{1}"}) { const size_t k = w.find(ph); if (k != std::string::npos) w.replace(k, 3, ph[1] == '0' ? d.sheetName : scaleText(d.scale)); }
+        d.warnings.push_back(w);
+        return f2;
+    }
     if (s == 0) { s = 0.01; for (double k : kScales) if (k <= 20) { s = k; if (k * needW + mw <= sh->w - 60 && k * needH + mh <= sh->h - 90) break; } }
     d.sheetW = sh->w; d.sheetH = sh->h; d.sheetName = sh->name; d.scale = s;
     Frame f; f.fx0 = margL; f.fy0 = margO; f.fx1 = sh->w - margO; f.fy1 = sh->h - margO; f.s = s;
@@ -147,7 +172,7 @@ Frame makeSheet(Drawing& d, const Meta& meta, double needW, double needH, double
     field(bx0, fy0 + 12, T("Material"), meta.material); field(split2, fy0 + 12, T("Tolerancia general"), meta.generalTolerance);
     text(d, bx0 + 1.5, fy0 + 7.8, 2.2, T("Escala")); text(d, bx0 + 1.5, fy0 + 2, kTxt, scaleText(s));
     text(d, split2 + 1.5, fy0 + 7.8, 2.2, T("Formato")); text(d, split2 + 1.5, fy0 + 2, kTxt, d.sheetName);
-    text(d, split3 + 1.5, fy0 + 7.8, 2.2, T("Unidades")); text(d, split3 + 1.5, fy0 + 2, kTxt, "mm");
+    text(d, split3 + 1.5, fy0 + 7.8, 2.2, T("Unidades")); text(d, split3 + 1.5, fy0 + 2, kTxt, gImperialUnits ? "in" : "mm");
     projSymbol(d, f.fx1 - 25, fy0 + 2.5);
     text(d, bx0 + 1.5, by1 + 1.5, 2.2, "Diedro");
     // notas: a la izquierda del cajetín si caben, si no encima
@@ -155,7 +180,7 @@ Frame makeSheet(Drawing& d, const Meta& meta, double needW, double needH, double
     for (auto& n : notes) wmax = std::max(wmax, textW(n, kTxt));
     double ny = fy0 + (wmax > bx0 - f.fx0 - 8 ? titleH : 0) + 3;
     for (auto it = notes.rbegin(); it != notes.rend(); ++it) {
-        const bool undef = it->rfind(T("No definidos en el STEP (indicar antes de fabricar)"), 0) == 0;
+        const bool undef = it->rfind(T("No definidos en el STEP (indicar antes de fabricar)"), 0) == 0 || it->find(": " + T("NO DEFINIDO")) != std::string::npos;
         text(d, f.fx0 + 3, ny, kTxt, *it, 0, undef); ny += 4.5;
     }
     f.zx0 = f.fx0 + 15 + mw / 2; f.zx1 = f.fx1 - 15 - mw / 2; f.zy0 = ny + 6 + mh / 2; f.zy1 = f.fy1 - 12 - mh / 2;
@@ -163,13 +188,13 @@ Frame makeSheet(Drawing& d, const Meta& meta, double needW, double needH, double
 }
 
 // cota lineal horizontal entre xa y xb (hoja); ya/yb: y de los puntos acotados; yd: y de la línea de cota
-void dimH(Drawing& d, double xa, double xb, double ya, double yb, double yd, const std::string& txt, const std::string& kind, double val) {
+void dimH(Drawing& d, double xa, double xb, double ya, double yb, double yd, const std::string& txt, const std::string& kind, double val, bool textLeft = false) {
     if (xa > xb) { std::swap(xa, xb); std::swap(ya, yb); }
     const double sg = yd > ya ? 1 : -1;
     ln(d, xa, ya + sg * 1, xa, yd + sg * 2); ln(d, xb, yb + sg * 1, xb, yd + sg * 2);
     const double tw = textW(txt, kTxt);
     if (xb - xa >= tw + 8) { ln(d, xa, yd, xb, yd); arrow(d, xa, yd, 1, 0); arrow(d, xb, yd, -1, 0); text(d, 0.5 * (xa + xb) - tw / 2, yd + 1, kTxt, txt); }
-    else { ln(d, xa - 6, yd, xb + 6, yd); arrow(d, xa, yd, -1, 0); arrow(d, xb, yd, 1, 0); text(d, xb + 8, yd - 1.2, kTxt, txt); }
+    else { ln(d, xa - 6, yd, xb + 6, yd); arrow(d, xa, yd, -1, 0); arrow(d, xb, yd, 1, 0); text(d, textLeft ? xa - 8 - tw : xb + 8, yd - 1.2, kTxt, txt); }
     d.dims.push_back({kind, val, txt});
 }
 void dimV(Drawing& d, double ya, double yb, double xa, double xb, double xd, const std::string& txt, const std::string& kind, double val) {
@@ -196,7 +221,7 @@ void dimA(Drawing& d, double x1, double y1, double x2, double y2, double off, co
 }
 void centerCross(Drawing& d, double cx, double cy, double r) { ln(d, cx - r, cy, cx + r, cy, 0.18, LineType::Center); ln(d, cx, cy - r, cx, cy + r, 0.18, LineType::Center); }
 std::string userKey(const Meta& m, const char* k) { auto it = m.tols.find(k); return it == m.tols.end() ? std::string() : it->second; }
-void finish(Drawing& d, const Meta& meta, const std::string& kind) { (void)meta; d.kind = kind; d.label = kind; }
+void finish(Drawing& d, const Meta& meta, const std::string& kind) { d.kind = kind; d.label = kind; (void)meta; }
 }  // namespace
 
 // ================================================================== MUELLE
@@ -418,7 +443,7 @@ bool springImpl(const std::string& path, const Meta& meta, Drawing& d, int mode)
     }
     if (cone) { for (auto& q : P) q.z -= zl; zh -= zl; zl = 0; }
     double rmin = 1e18, rmax = 0, zlo = 0, zhi = zh, vh = 0, wy = 0, bodyZ0 = 0, bodyZ1 = zh;
-    int nLeg = 0; double legR[2] = {0, 0}, legA[2] = {0, 0};
+    int nLeg = 0; double legR[2] = {0, 0}, legA[2] = {0, 0}, legTz[2] = {0, 0}, legTx[2] = {0, 0}, legTy[2] = {0, 0}, legRm = 0; bool legDir[2] = {false, false};
     if (hook) {   // radios del cuerpo (40 % central); extremos del cuerpo = lazos circulares del hilo; ganchos = lo que sobresale
         for (auto& q : P) if (std::fabs(q.z - 0.5 * zh) < 0.2 * zh) { const double r = std::hypot(q.x, q.y); rmin = std::min(rmin, r); rmax = std::max(rmax, r); }
         const double dwh = rmax - rmin, Rh = 0.5 * (rmax + rmin);
@@ -436,7 +461,7 @@ bool springImpl(const std::string& path, const Meta& meta, Drawing& d, int mode)
         for (auto& q : P) { const double x = q.x * ct + q.y * st, y = -q.x * st + q.y * ct; q.x = x; q.y = y; vh = std::max(vh, 2 * std::fabs(x)); wy = std::max(wy, 2 * std::fabs(y)); }
         if (mode == 1) {   // patas: puntas por grupos de ángulo (hueco mayor entre ángulos de vértices fuera del cuerpo)
             std::vector<std::array<double, 3>> av;   // ángulo, radio, índice
-            for (auto& q : P) if (isApp(q)) av.push_back({std::atan2(q.y, q.x), std::hypot(q.x, q.y), 0});
+            for (auto& q : P) if (isApp(q)) av.push_back({std::atan2(q.y, q.x), std::hypot(q.x, q.y), q.z});
             std::sort(av.begin(), av.end());
             size_t gi = 0; double gmax = -1;
             for (size_t i = 0; i < av.size(); i++) { const double nx = i + 1 < av.size() ? av[i + 1][0] : av[0][0] + 2 * kPi, gp = nx - av[i][0]; if (gp > gmax) { gmax = gp; gi = i; } }
@@ -448,6 +473,26 @@ bool springImpl(const std::string& path, const Meta& meta, Drawing& d, int mode)
                 if (av[i][1] > bR[cur]) { bR[cur] = av[i][1]; bA[cur] = av[i][0]; }
             }
             nLeg = bR[1] > 0 ? 2 : 1; legR[0] = bR[0]; legA[0] = bA[0]; legR[1] = bR[1]; legA[1] = bA[1];
+            {   // M6r4: ángulo entre patas = ángulo entre las DIRECCIONES de las patas (eje principal de sus puntos, orientado hacia fuera), no entre los ángulos polares de las puntas
+                double nx0[2] = {0, 0}, ny0[2] = {0, 0}, nr0[2] = {1e18, 1e18}, fx0[2] = {0, 0}, fy0[2] = {0, 0}, fr0[2] = {0, 0}, mx[2] = {0, 0}, my[2] = {0, 0}, cxx2[2] = {0, 0}, cyy2[2] = {0, 0}, cxy2[2] = {0, 0}; size_t cn[2] = {0, 0};
+                int c2 = 0;
+                for (size_t k = 0; k < av.size(); k++) {
+                    const size_t i = (gi + 1 + k) % av.size(), pi = (i + av.size() - 1) % av.size();
+                    if (k > 0) { double dg = av[i][0] - av[pi][0]; if (dg < 0) dg += 2 * kPi; if (dg > 0.35) c2 = 1; }
+                    const double x = av[i][1] * std::cos(av[i][0]), y = av[i][1] * std::sin(av[i][0]);
+                    if (av[i][1] < nr0[c2]) { nr0[c2] = av[i][1]; nx0[c2] = x; ny0[c2] = y; } if (av[i][1] > fr0[c2]) { fr0[c2] = av[i][1]; fx0[c2] = x; fy0[c2] = y; legTz[c2] = av[i][2] > 0.5 * (bodyZ0 + bodyZ1) ? 1 : 0; }
+                    mx[c2] += x; my[c2] += y; cxx2[c2] += x * x; cyy2[c2] += y * y; cxy2[c2] += x * y; cn[c2]++;
+                }
+                legRm = Rh;
+                for (int g = 0; g < nLeg; g++) { legTx[g] = fx0[g]; legTy[g] = fy0[g]; }
+                for (int g = 0; g < nLeg; g++) if (cn[g] >= 3) {
+                    const double n = (double)cn[g], ax = mx[g] / n, ay = my[g] / n;
+                    const double vx = cxx2[g] / n - ax * ax, vy = cyy2[g] / n - ay * ay, vxy = cxy2[g] / n - ax * ay;
+                    double th2 = 0.5 * std::atan2(2 * vxy, vx - vy), dx = std::cos(th2), dy = std::sin(th2);
+                    if (dx * (fx0[g] - nx0[g]) + dy * (fy0[g] - ny0[g]) < 0) { dx = -dx; dy = -dy; }
+                    if (std::sqrt(std::max(vx, vy)) >= 0.8 * dwh) { legA[g] = std::atan2(dy, dx); legDir[g] = true; }
+                }
+            }
         }
         for (auto& q : P) q.z -= bodyZ0;
         zlo = -bodyZ0; zhi = zh - bodyZ0; bodyZ1 -= bodyZ0; bodyZ0 = 0;
@@ -528,14 +573,31 @@ bool springImpl(const std::string& path, const Meta& meta, Drawing& d, int mode)
     notes.push_back(T("Ø del hilo") + " d = " + fmt(dw) + "; " + T("Ø exterior") + " De = " + fmt(De) + "; " + T("Ø interior") + " Di = " + fmt(Di) + "; " + T("Ø medio") + " Dm = " + fmt(Dm) + " (" + T("medidos") + ")");
     }
     if (mode == 1) {
-        std::string lg = T("Longitud del cuerpo") + " Lc = " + fmt(L) + "; " + T("paso") + " p = " + fmt(pitch) + "; " + T("espiras totales") + " ≈ " + fmt(turnsQ) + " (" + T("medidas") + ")";
+        std::string lg = T("Longitud del cuerpo") + " Lc = " + fmt(L) + "; " + T("paso") + " p = " + fmt(pitch) + "; " + T("espiras totales") + " ≈ " + fmtN(turnsQ) + " (" + T("medidas") + ")";
         notes.push_back(lg);
         std::string lp = T("Distancia eje–punta de pata") + ": " + fmt(legR[0]); if (nLeg > 1) lp += " / " + fmt(legR[1]);
-        if (nLeg > 1) { double dA = std::fabs(legA[0] - legA[1]) * 180 / kPi; if (dA > 180) dA = 360 - dA; lp += "; " + T("Ángulo entre patas") + " = " + fmt(dA) + "°"; }
+        if (nLeg > 1) {   // M6r4: ángulo entre las direcciones de las patas; si solo hay el extremo de la pata (cilindro recto sin vértices), se supone pata tangente al cuerpo que continúa la hélice (decisión propia)
+            double dir[2];
+            for (int g = 0; g < 2; g++) {
+                if (legDir[g]) { dir[g] = legA[g]; continue; }
+                const double Tr = std::hypot(legTx[g], legTy[g]), phi = std::atan2(legTy[g], legTx[g]);
+                const double c = Tr > legRm ? std::acos(legRm / Tr) : 0;
+                const double sg = (legTz[g] > 0.5 ? 1 : -1) * (lh ? -1 : 1);   // extremo superior de hélice dcha.: la pata sigue el sentido de avance (+tangente)
+                double best = phi;
+                for (int sd = -1; sd <= 1; sd += 2) {
+                    const double ph = phi + sd * c, px = legRm * std::cos(ph), py = legRm * std::sin(ph);
+                    const double ex = legTx[g] - px, ey = legTy[g] - py;
+                    if (sg * (ex * -std::sin(ph) + ey * std::cos(ph)) > 0) { best = std::atan2(ey, ex); break; }
+                }
+                dir[g] = best;
+            }
+            double dA = std::fabs(dir[0] - dir[1]) * 180 / kPi; while (dA > 360) dA -= 360; if (dA > 180) dA = 360 - dA;
+            lp += "; " + T("Ángulo entre patas") + " = " + fmtN(dA) + "°";
+        }
         notes.push_back(lp + " (" + T("medidos") + ")");
     } else
-    if (hook) notes.push_back(T("Longitud total (con ganchos)") + " Lt = " + fmt(zhi - zlo) + "; " + T("Longitud del cuerpo") + " Lc = " + fmt(L) + "; " + T("paso") + " p = " + fmt(pitch) + "; " + T("espiras totales") + " ≈ " + fmt(turnsQ) + " (" + T("medidas") + ")");
-    else notes.push_back(T("Longitud libre") + " L0 = " + fmt(L) + "; " + T("paso") + " p = " + fmt(pitch) + "; " + T("espiras totales") + " ≈ " + fmt(turnsQ) + " (" + T("medidas") + ")");
+    if (hook) notes.push_back(T("Longitud total (con ganchos)") + " Lt = " + fmt(zhi - zlo) + "; " + T("Longitud del cuerpo") + " Lc = " + fmt(L) + "; " + T("paso") + " p = " + fmt(pitch) + "; " + T("espiras totales") + " ≈ " + fmtN(turnsQ) + " (" + T("medidas") + ")");
+    else notes.push_back(T("Longitud libre") + " L0 = " + fmt(L) + "; " + T("paso") + " p = " + fmt(pitch) + "; " + T("espiras totales") + " ≈ " + fmtN(turnsQ) + " (" + T("medidas") + ")");
     notes.push_back(lh ? T("Hélice izquierda") + " (LH)" : T("Hélice derecha (normal, sin indicación)"));
     std::string line, missing;
     const char* want[][2] = {{mode == 1 ? "Tipo de patas" : hook ? "Tipo de ganchos" : "Tipo de extremos (ISO 2162-1, 4 c)", mode == 1 ? "patas" : hook ? "ganchos" : "extremos"}, {"Carga / rigidez", "carga"}, {"Tolerancias del muelle", "tolmuelle"}, {"Tratamiento", "tratamiento"}};
@@ -642,8 +704,11 @@ bool springImpl(const std::string& path, const Meta& meta, Drawing& d, int mode)
     dimH(d, Zx(0), Zx(L), Xy(-0.5 * De), Xy(-0.5 * De), Xy(-0.5 * De) - 12, fmt(L), "length", L);
     {   // d y p sobre el primer par de círculos del hilo del borde superior
         const double z1 = c0[std::min<size_t>(1, c0.size() - 1)];
-        dimH(d, Zx(z1 - 0.5 * dw), Zx(z1 + 0.5 * dw), Xy(Rmf(z1) + 0.5 * dw), Xy(Rmf(z1) + 0.5 * dw), Xy(0.5 * De) + 8, "Ø" + fmt(dw), "diameter", dw);
-        if (c0.size() >= 3) dimH(d, Zx(c0[1]), Zx(c0[2]), Xy(Rmf(c0[1])), Xy(Rmf(c0[2])), Xy(0.5 * De) + 18, fmt(c0[2] - c0[1]), "length", c0[2] - c0[1]);
+        dimH(d, Zx(z1 - 0.5 * dw), Zx(z1 + 0.5 * dw), Xy(Rmf(z1) + 0.5 * dw), Xy(Rmf(z1) + 0.5 * dw), Xy(0.5 * De) + 8, "Ø" + fmt(dw), "diameter", dw, mode != 1);   // texto a la izquierda salvo en torsión (ahí están las patas): a la derecha lo cruza la línea de referencia del paso
+        if (c0.size() >= 3) {   // B2r3: se acota el par de hilos cuyo paso se acerca más al p de la nota (mediana), para no contradecirla
+            size_t k = 1; for (size_t i = 1; i + 1 < c0.size(); i++) if (std::fabs(c0[i + 1] - c0[i] - pitch) < std::fabs(c0[k + 1] - c0[k] - pitch)) k = i;
+            dimH(d, Zx(c0[k]), Zx(c0[k + 1]), Xy(Rmf(c0[k])), Xy(Rmf(c0[k + 1])), Xy(0.5 * De) + 18, fmt(c0[k + 1] - c0[k]), "length", c0[k + 1] - c0[k]);
+        }
     }
     if (lh) text(d, Zx(zhi) - 8, Xy(0.5 * De) + 3, kTxt, "LH");
     d.tag(p0, 0);
@@ -664,7 +729,7 @@ bool layoutSpring(const std::string& path, const Meta& meta, Drawing& d) { retur
 
 // ================================================================== LEVA
 double gCamMinH = 0;   // espesor mínimo / Rmáx (pieza suelta: un lóbulo es grueso; arandelas con lengüeta no)
-int gCamshaftMinLobes = 2;   // pieza pesada en conjunto: 1 lóbulo basta (árbol de levas con piñón)
+thread_local int gCamshaftMinLobes = 2;   // pieza pesada en conjunto: 1 lóbulo basta (árbol de levas con piñón)
 bool gCamStrict = false;   // dentro de un conjunto: solo contornos de arcos de ≥2 radios distintos con taladro (lóbulo de leva), no cualquier placa
 bool layoutCam(const std::string& path, const Meta& meta, Drawing& d) {
     gL = meta.lang;
@@ -867,18 +932,53 @@ bool layoutCam(const std::string& path, const Meta& meta, Drawing& d) {
     if (haveBore) d.arcs.push_back({Px(0), Py(0), s * boreR, 0, 360, LineType::Continuous, kThick});
     for (auto& h : holes) d.arcs.push_back({Px(h.cx), Py(h.cy), s * h.r, 0, 360, LineType::Continuous, kThick});
     centerCross(d, Px(0), Py(0), std::max(s * boreR, 3.0) + 4);
+    struct Occ { double x0, x1, y; }; std::vector<Occ> used;   // textos ya colocados (m4: sin solapes entre etiquetas)
     auto radDim = [&](int kdeg, double r) {   // radio con línea de cota desde el centro de giro (ISO 129-1)
         const double a = kdeg * kPi / 180, c = std::cos(a), sn = std::sin(a);
         ln(d, Px(0), Py(0), Px(r * c), Py(r * sn), kThin);
         arrow(d, Px(r * c), Py(r * sn), -c, -sn);
         const std::string t = std::string("R") + fmt(r);
-        text(d, Px(0.5 * r * c) + 1.5, Py(0.5 * r * sn) + 1.5, kTxt, t);
+        const double tw0 = textW(std::string("R") + fmt(r), kTxt), vert = std::fabs(c) < 0.7;
+        auto hitsGeom = [&](double bx0, double by0, double bx1, double by1) {   // F2: la etiqueta no pisa el perfil, el agujero central ni los agujeros
+            auto inb = [&](double x, double y) { return x > bx0 && x < bx1 && y > by0 && y < by1; };
+            for (size_t i = 0; i < out.size(); i++) {
+                const auto &a = out[i], &b = out[(i + 1) % out.size()];
+                const double L = std::hypot(Px(b[0]) - Px(a[0]), Py(b[1]) - Py(a[1])); const int N = std::max(1, (int)(L / 0.4));
+                for (int k = 0; k <= N; k++) if (inb(Px(a[0] + (b[0] - a[0]) * k / N), Py(a[1] + (b[1] - a[1]) * k / N))) return true;
+            }
+            auto circ = [&](double cx, double cy, double rr) { const double nx = std::min(std::max(cx, bx0), bx1), ny = std::min(std::max(cy, by0), by1); const double dd = std::hypot(nx - cx, ny - cy); const double fx = std::max(std::fabs(bx0 - cx), std::fabs(bx1 - cx)), fy = std::max(std::fabs(by0 - cy), std::fabs(by1 - cy)); return dd < rr && std::hypot(fx, fy) > rr; };
+            if (haveBore && circ(Px(0), Py(0), s * boreR)) return true;
+            for (auto& h : holes) if (circ(Px(h.cx), Py(h.cy), s * h.r)) return true;
+            return false;
+        };
+        double tx = 0, ty = 0;
+        for (double fr : vert ? std::vector<double>{0.8, 0.65, 0.5, 0.9, 0.35} : std::vector<double>{1.0, 0.85, 0.7, 0.55, 0.4}) {   // m4: cerca del borde; F2: se desplaza a lo largo de la directriz hasta un sitio libre
+            tx = vert ? Px(fr * r * c) + 4.5 : Px(fr * r * c) - (c > 0 ? tw0 + 6 : -6); ty = (vert ? Py(fr * r * sn) : Py(fr * r * sn * 0.0)) + 1.5;
+            if (!hitsGeom(tx - 0.6, ty - 0.6, tx + tw0 + 0.6, ty + kTxt + 0.6)) { fr = -1; break; }
+        }
+        if (!(tx == tx) || hitsGeom(tx - 0.6, ty - 0.6, tx + tw0 + 0.6, ty + kTxt + 0.6)) {   // F2: sin sitio dentro, la etiqueta va fuera del perfil, tras la punta de la flecha
+            const double bx = Px(r * c) + c * 4.5, by = Py(r * sn) + sn * 4.5;
+            tx = c < -0.5 ? bx - tw0 : c > 0.5 ? bx : Px(r * c) + 2;   // casi vertical: a la derecha de la punta (a la izquierda cruzaría las auxiliares del Ø)
+            ty = sn > 0.3 ? by : sn < -0.3 ? by - kTxt : by - kTxt / 2;
+        }
+        text(d, tx, ty, kTxt, t); used.push_back({tx, tx + textW(t, kTxt), ty});
+        if (!vert) used.push_back({std::min(Px(0), Px(r * c)), std::max(Px(0), Px(r * c)), Py(r * sn) - 0.3});   // F7: los rótulos de agujeros no pisan la línea de cota del radio
         d.dims.push_back({"radius", r, t});
     };
     radDim(kmax, rmax);
     if (std::abs(kmin - kmax) > 10) radDim(kmin, rmin);
-    if (haveBore) dimH(d, Px(-boreR), Px(boreR), Py(-boreR), Py(-boreR), Py(ylo) - 12, "Ø" + fmt(2 * boreR), "hole", 2 * boreR);
-    for (auto& h : holes) { const std::string t = "Ø" + fmt(2 * h.r) + " (" + fmt(h.cx) + "; " + fmt(h.cy) + ")"; text(d, Px(h.cx) - textW(t, kTxt) / 2, Py(h.cy) - s * h.r - 5, kTxt, t); d.dims.push_back({"hole", 2 * h.r, t}); }
+    if (haveBore && rmax > 4 * boreR) {   // F7: taladro pequeño frente al perfil: Ø con línea de cota diametral oblicua y flechas por fuera (ISO 129-1 §5.4/§7.1), junto al taladro y no bajo todo el perfil
+        const double a = 165 * kPi / 180, ux = std::cos(a), uy = std::sin(a), Rp = s * boreR, ext = Rp + 9;
+        ln(d, Px(0) - ux * ext, Py(0) - uy * ext, Px(0) + ux * ext, Py(0) + uy * ext, kThin);
+        arrow(d, Px(0) + ux * Rp, Py(0) + uy * Rp, ux, uy); arrow(d, Px(0) - ux * Rp, Py(0) - uy * Rp, -ux, -uy);
+        const std::string bt = "Ø" + fmt(2 * boreR); const double bw = textW(bt, kTxt);
+        const double tx = Px(0) + ux * ext - bw - 1, ty = Py(0) + uy * ext + 1;
+        text(d, tx, ty, kTxt, bt); used.push_back({tx, tx + bw, ty});
+        d.dims.push_back({"hole", 2 * boreR, bt});
+    } else if (haveBore) dimH(d, Px(-boreR), Px(boreR), Py(-boreR), Py(-boreR), Py(ylo) - 12, "Ø" + fmt(2 * boreR), "hole", 2 * boreR);
+    for (auto& h : holes) { const std::string t = "Ø" + fmt(2 * h.r) + " (" + fmt(h.cx) + "; " + fmt(h.cy) + ")"; const double hx = std::max(Px(h.cx) - textW(t, kTxt) / 2, haveBore ? Px(boreR) + 3 : -1e9); double hy = Py(h.cy) - s * h.r - 5;
+        for (int it = 0; it < 12; it++) { bool hit = false; for (auto& u : used) if (hx < u.x1 + 1 && hx + textW(t, kTxt) > u.x0 - 1 && std::fabs(hy - u.y) < kTxt + 0.8) hit = true; if (!hit) break; hy -= kTxt + 1; }
+        text(d, hx, hy, kTxt, t); used.push_back({hx, hx + textW(t, kTxt), hy}); d.dims.push_back({"hole", 2 * h.r, t}); }
     d.tag(p0, 0);
     // vista desde la izquierda: espesor, con el agujero a trazos
     p0 = d.pos();
@@ -896,7 +996,7 @@ bool layoutCam(const std::string& path, const Meta& meta, Drawing& d) {
     const int rows = 12;
     for (int col = 0; col < 2; col++) {
         const double x0 = tx0 + col * 50;
-        ln(d, x0, ty1, x0 + 46, ty1); text(d, x0 + 2, ty1 - 5, 2.8, "θ [°]"); text(d, x0 + 26, ty1 - 5, 2.8, "R [mm]"); ln(d, x0, ty1 - 7, x0 + 46, ty1 - 7);
+        ln(d, x0, ty1, x0 + 46, ty1); text(d, x0 + 2, ty1 - 5, 2.8, "θ [°]"); text(d, x0 + 26, ty1 - 5, 2.8, (gImperialUnits ? "R [in]" : "R [mm]")); ln(d, x0, ty1 - 7, x0 + 46, ty1 - 7);
         for (int r = 0; r < rows; r++) {
             const int deg = (col * rows + r) * 15;
             const double y = ty1 - 7 - (r + 1) * rowH;
@@ -1071,9 +1171,14 @@ bool layoutCamshaft(const std::string& path, const Meta& meta, Drawing& d) {
     { std::vector<Sec> m; for (auto& s2 : secs) { if (!m.empty() && std::fabs(m.back().r - s2.r) < 1e-6 && s2.t0 <= m.back().t1 + 1e-3) m.back().t1 = std::max(m.back().t1, s2.t1); else m.push_back(s2); } secs = m; }
     // quitar los tramos totalmente cubiertos por otro de mayor radio (taladros interiores)
     { std::vector<Sec> m; for (auto& s2 : secs) { bool cov = false; for (auto& o : secs) if (o.r > s2.r + 1e-6 && o.t0 <= s2.t0 + 1e-3 && o.t1 >= s2.t1 - 1e-3) cov = true; if (!cov) m.push_back(s2); } secs = m; }
-    { std::vector<Sec> m; for (auto& s2 : secs) { bool f2 = false; for (auto& o : m) if (std::fabs(o.r - s2.r) < 1e-6) { o.t0 = std::min(o.t0, s2.t0); o.t1 = std::max(o.t1, s2.t1); f2 = true; } if (!f2) m.push_back(s2); } secs = m; }   // tramos del mismo Ø separados por levas: una fila
+    { std::vector<Sec> m; for (auto& s2 : secs) { bool f2 = false; for (auto& o : m) if (!f2 && std::fabs(o.r - s2.r) < 1e-6) {
+            bool lobeOnly = true;   // M3: solo se funden tramos del mismo Ø si el hueco entre ellos lo ocupan levas (no otro tramo del eje)
+            for (double t = std::min(o.t1, s2.t0) + 0.25; t < std::max(o.t1, s2.t0) - 0.25 && lobeOnly; t += 0.25) lobeOnly = inLobe(t);
+            if (!lobeOnly) continue;
+            o.t0 = std::min(o.t0, s2.t0); o.t1 = std::max(o.t1, s2.t1); f2 = true; } if (!f2) m.push_back(s2); } secs = m; }   // tramos del mismo Ø separados por levas: una fila
     std::vector<Sec> secDim;   // cota de Ø: en el tramo continuo más largo de cada diámetro
     for (auto& s2 : secs) { Sec best = s2; double bl = 0; double a0 = s2.t0; std::vector<double> cuts = {s2.t0}; for (auto& lb : lobes) if (lb.t0 > s2.t0 && lb.t1 < s2.t1) { cuts.push_back(lb.t0); cuts.push_back(lb.t1); } cuts.push_back(s2.t1); (void)a0; for (size_t i = 0; i + 1 < cuts.size(); i += 2) if (cuts[i + 1] - cuts[i] > bl) { bl = cuts[i + 1] - cuts[i]; best = {cuts[i], cuts[i + 1], s2.r}; } secDim.push_back(best); }
+    { std::vector<Sec> m; for (auto& a2 : secDim) { bool other = false; for (auto& b2 : secDim) if (&a2 != &b2 && std::fabs(a2.r - b2.r) < 1e-6 && b2.t1 - b2.t0 >= 12) other = true; if (other && a2.t1 - a2.t0 < 12) continue; m.push_back(a2); } secDim = m; }   // M3: un tramo corto cuyo Ø ya está acotado en uno largo no se acota otra vez
     // ---- notas
     std::vector<std::string> notes;
     notes.push_back(T("Árbol de levas") + ": " + std::to_string(lobes.size()) + " " + T("levas") + ", " + T("longitud") + " " + fmt(L) + ", Ø" + fmt(2 * (secs.empty() ? lobes[0].rb : secs.front().r)));
@@ -1186,18 +1291,18 @@ bool layoutCamshaft(const std::string& path, const Meta& meta, Drawing& d) {
     {
         std::vector<std::vector<std::string>> rows = {{"N", "x0", "x1", "R base", "R máx", "φ [°]"}};
         for (size_t i = 0; i < lobes.size(); i++) rows.push_back({std::to_string(i + 1), fmt(lobes[i].t0 - tmin), fmt(lobes[i].t1 - tmin), fmt(lobes[i].rb), fmt(lobes[i].rmax), fmt1(lobes[i].phi)});
-        text(d, tx, ty1 + 2, kTxt, T("Levas"));
+        text(d, tx, ty1 + 2, kTxt, T("Levas") + (gImperialUnits ? " [in]" : " [mm]"));
         tx += grid(tx, ty1, {10, 20, 20, 20, 20, 18}, rows) + 8;
     }
     if (!secs.empty()) {
         std::vector<std::vector<std::string>> rows = {{"x0", "x1", "Ø"}};
         for (auto& sc : secs) rows.push_back({fmt(sc.t0 - tmin), fmt(sc.t1 - tmin), fmt(2 * sc.r)});
-        text(d, tx, ty1 + 3.2, kTxt, T("Tramos del eje"));
+        text(d, tx, ty1 + 3.2, kTxt, T("Tramos del eje") + (gImperialUnits ? " [in]" : " [mm]"));
         tx += grid(tx, ty1, {22, 22, 22}, rows) + 8;
     }
     if (common) {
         for (int col = 0; col < 2; col++) {
-            std::vector<std::vector<std::string>> rows = {{"θ [°]", "R [mm]"}};
+            std::vector<std::vector<std::string>> rows = {{"θ [°]", (gImperialUnits ? "R [in]" : "R [mm]")}};
             for (int r = 0; r < 12; r++) { const int deg = (col * 12 + r) * 15; rows.push_back({std::to_string(deg), fmt(lobes[0].Rn[deg % 360])}); }
             if (col == 0) text(d, tx, ty1 + 3.2, kTxt, T("Perfil de la leva: R en función de θ"));
             tx += grid(tx, ty1, {20, 24}, rows) + 4;
@@ -1315,8 +1420,9 @@ bool layoutCam3D(const std::string& path, const Meta& meta, Drawing& d) {
     // ---- hoja: vista frontal (eje vertical), desarrollo h/z(θ), tabla
     d = Drawing();
     d.groups = {T("Vista"), T("Desarrollo"), T("Tabla")};
-    const double devW = 100;
-    const Frame f = makeSheet(d, meta, 2 * rOut, H, 30 + devW + 30 + 96, 40, notes);
+    const double devWm = face ? 0 : kPi * 2 * rOut;   // tambor: el desarrollo mide π·Ø a la escala del plano (cilindro desarrollado de verdad); leva de cara: diagrama h(θ) de 100 mm
+    const Frame f = makeSheet(d, meta, 2 * rOut + devWm, H, 30 + (face ? 100 : 0) + 30 + 96, 40, notes);
+    const double devW = face ? 100 : f.s * devWm;
     const double s = f.s, cyc = 0.5 * (f.zy0 + f.zy1), vx = f.fx0 + 25 + s * rOut, y0 = cyc - 0.5 * s * H;
     Pos p0 = d.pos();
     ln(d, vx - s * rOut, y0, vx + s * rOut, y0, kThick); ln(d, vx - s * rOut, y0 + s * H, vx + s * rOut, y0 + s * H, kThick);
@@ -1324,6 +1430,14 @@ bool layoutCam3D(const std::string& path, const Meta& meta, Drawing& d) {
     if (rIn > 0) for (double sg : {1.0, -1.0}) ln(d, vx + sg * s * rIn, y0, vx + sg * s * rIn, y0 + s * H, 0.25, LineType::Hidden);
     ln(d, vx, y0 - 4, vx, y0 + s * H + 4, 0.18, LineType::Center);
     if (face) ln(d, vx - s * rOut, y0 + s * lo, vx + s * rOut, y0 + s * lo, 0.25, LineType::Hidden);
+    if (!face)   // ranura de tambor en el alzado: bordes visibles (lado y<0, hacia el observador) en continua y los de la cara oculta a trazos
+        for (int k = 0; k + 1 < NB; k++) {
+            if (!have[k] || !have[k + 1]) continue;
+            const double a0 = 2 * kPi * k / NB, a1 = 2 * kPi * (k + 1) / NB;
+            const bool vis = std::sin(0.5 * (a0 + a1)) < 0;
+            for (double sg : {-0.5, 0.5})
+                ln(d, vx + s * rOut * std::cos(a0), y0 + s * (hv[k] + sg * gw), vx + s * rOut * std::cos(a1), y0 + s * (hv[k + 1] + sg * gw), vis ? 0.25 : 0.18, vis ? LineType::Continuous : LineType::Hidden);
+        }
     dimH(d, vx - s * rOut, vx + s * rOut, y0, y0, y0 - 10, "Ø" + dEx, "diameter", 2 * rOut);
     if (rIn > 0) dimH(d, vx - s * rIn, vx + s * rIn, y0 + s * H, y0 + s * H, y0 + s * H + 10, "Ø" + dIn, "hole", 2 * rIn);
     dimV(d, y0, y0 + s * H, vx + s * rOut, vx + s * rOut, vx + s * rOut + 10, fmt(H), "length", H);
@@ -1354,7 +1468,7 @@ bool layoutCam3D(const std::string& path, const Meta& meta, Drawing& d) {
     const int rows = 12;
     for (int col = 0; col < 2; col++) {
         const double x0 = tx0 + col * 50;
-        ln(d, x0, ty1, x0 + 46, ty1); text(d, x0 + 2, ty1 - 5, 2.8, "θ [°]"); text(d, x0 + 26, ty1 - 5, 2.8, face ? "h [mm]" : "z [mm]"); ln(d, x0, ty1 - 7, x0 + 46, ty1 - 7);
+        ln(d, x0, ty1, x0 + 46, ty1); text(d, x0 + 2, ty1 - 5, 2.8, "θ [°]"); text(d, x0 + 26, ty1 - 5, 2.8, face ? (gImperialUnits ? "h [in]" : "h [mm]") : (gImperialUnits ? "z [in]" : "z [mm]")); ln(d, x0, ty1 - 7, x0 + 46, ty1 - 7);
         for (int r = 0; r < rows; r++) {
             const int deg = (col * rows + r) * 15;
             const double y = ty1 - 7 - (r + 1) * rowH;
@@ -1371,6 +1485,24 @@ bool layoutCam3D(const std::string& path, const Meta& meta, Drawing& d) {
 }
 
 // ================================================================== TUBO CURVADO (G13)
+// m7 ronda 5: eje de línea mixta fina (ISO 128-24, tipo 04.1) a lo largo de una polilínea: el patrón sigue continuo por los tramos cortos de los codos
+static void chainPoly(Drawing& d, const std::vector<std::array<double, 2>>& P) {
+    const double pat[4] = {9, 1.5, 1.5, 1.5};   // raya larga, hueco, raya corta, hueco (aprox. al patrón de Center)
+    int k = 0; double left = pat[0];
+    for (size_t i = 0; i + 1 < P.size(); i++) {
+        double x1 = P[i][0], y1 = P[i][1], x2 = P[i + 1][0], y2 = P[i + 1][1];
+        const double L = std::hypot(x2 - x1, y2 - y1);
+        if (L < 1e-6) continue;
+        double t = 0;
+        while (t < L - 1e-9) {
+            const double step = std::min(left, L - t);
+            if (k % 2 == 0) ln(d, x1 + (x2 - x1) * t / L, y1 + (y2 - y1) * t / L, x1 + (x2 - x1) * (t + step) / L, y1 + (y2 - y1) * (t + step) / L, 0.18);
+            t += step; left -= step;
+            if (left < 1e-9) { k = (k + 1) % 4; left = pat[k]; }
+        }
+    }
+}
+
 // Línea media sacada de los cilindros y toros exteriores; tabla de curvado (recta, ángulo, rotación, radio) y coordenadas de los vértices (ISO 129-1 §8.5.1).
 namespace {
 struct PEl { bool arc; gp_Pnt a, b, c; gp_Vec n, ta, tb; double R = 0, ang = 0; };
@@ -1565,6 +1697,26 @@ bool layoutPipe(const std::string& path, const Meta& meta, Drawing& d, bool cabl
                 for (int i = 1; i < q.NbPoints(); i++) { gp_Pnt a = q.Value(i), b = q.Value(i + 1); v.L.push_back({a.X(), a.Y(), b.X(), b.Y()}); }
             }
         }
+        {   // costuras de cilindro (aristas del STEP sin continuidad): líneas visibles paralelas al eje de un tramo recto y dentro del tubo; no son contorno
+            auto pr2 = [&](const gp_Pnt& q, double& x, double& y) { x = gp_Vec(gp_Pnt(0, 0, 0), q).Dot(v.X); y = gp_Vec(gp_Pnt(0, 0, 0), q).Dot(v.Y); };
+            for (auto& e : ch) {
+                if (e.arc) continue;
+                double ax, ay, bx, by; pr2(e.a, ax, ay); pr2(e.b, bx, by);
+                const double L = std::hypot(bx - ax, by - ay); if (L < 4 * Ro) continue;
+                const double ux = (bx - ax) / L, uy = (by - ay) / L;
+                std::vector<std::array<double, 4>> keep;
+                for (auto& l : v.L) {
+                    const double dx = l[2] - l[0], dy = l[3] - l[1], len = std::hypot(dx, dy);
+                    bool seam = false;
+                    if (len > 1e-6 && std::fabs(dx * uy - dy * ux) < 1e-3 * len) {
+                        const double off = std::fabs((l[0] - ax) * uy - (l[1] - ay) * ux), t0 = (l[0] - ax) * ux + (l[1] - ay) * uy, t1 = (l[2] - ax) * ux + (l[3] - ay) * uy;
+                        seam = off > 0.08 * Ro && off < 0.92 * Ro && 0.5 * (t0 + t1) > -0.3 * L && 0.5 * (t0 + t1) < 1.3 * L;
+                    }
+                    if (!seam) keep.push_back(l);
+                }
+                v.L.swap(keep);
+            }
+        }
         if (v.L.empty()) return v;
         for (auto& l : v.L) for (int k = 0; k < 2; k++) { v.u0 = std::min(v.u0, l[2 * k]); v.u1 = std::max(v.u1, l[2 * k]); v.w0 = std::min(v.w0, l[2 * k + 1]); v.w1 = std::max(v.w1, l[2 * k + 1]); }
         return v;
@@ -1580,7 +1732,7 @@ bool layoutPipe(const std::string& path, const Meta& meta, Drawing& d, bool cabl
     notes.push_back((cable ? T("Cable/hilo") : hollow ? T("Tubo curvado") : T("Barra curvada")) + " Ø" + fmt(2 * Ro) + (hollow ? " × " + fmt(Ro - Ri) : "") + (hollow ? " (" + T("Ø exterior × pared") + ")" : "") + "; " + std::to_string(bd.size()) + " " + T("curvas") + (sameR ? "; R = " + fmt(Rm) + " (" + T("a eje") + ")" : ""));
     notes.push_back(T("Longitud desarrollada (eje)") + " = " + fmt(dev) + " (" + T("medida") + ")");
     if (cable) {
-        notes.push_back(T("Tolerancia de longitud: la de la documentación de ingeniería; si no, IPC/WHMA-A-620E Tabla 11-1"));
+        notes.push_back(T("Tolerancia general") + ": " + (meta.generalTolerance.empty() ? T("NO DEFINIDO") : meta.generalTolerance));   // M3: sin dato del usuario → NO DEFINIDO (rojo), no tabla ajena
         double rmin = 1e18; for (auto& e : el) if (e.arc && e.R > 0) rmin = std::min(rmin, e.R);
         if (rmin < 5 * 2 * Ro) notes.push_back(T("AVISO: radio de curvado del eje") + " " + fmt(rmin) + " < 5×Ø = " + fmt(10 * Ro) + " (IPC/WHMA-A-620E Tabla 14-1, " + T("valor de referencia; comprobar con el tipo de cable") + ")");
     }
@@ -1607,7 +1759,7 @@ bool layoutPipe(const std::string& path, const Meta& meta, Drawing& d, bool cabl
         auto sx = [&](double u) { return bx + s * (u - v.u0); }; auto sy = [&](double w) { return by + s * (w - v.w0); };
         for (auto& l : v.L) ln(d, sx(l[0]), sy(l[1]), sx(l[2]), sy(l[3]), kThick);
         auto proj = [&](const gp_Pnt& q, double& x, double& y) { gp_Vec w(gp_Pnt(0, 0, 0), q); x = sx(w.Dot(v.X)); y = sy(w.Dot(v.Y)); };
-        for (size_t i = 0; i + 1 < poly.size(); i++) { double x1, y1, x2, y2; proj(poly[i], x1, y1); proj(poly[i + 1], x2, y2); if (std::hypot(x2 - x1, y2 - y1) > 0.05) ln(d, x1, y1, x2, y2, 0.18, LineType::Center); }
+        { std::vector<std::array<double, 2>> P; for (auto& q : poly) { double x, y; proj(q, x, y); P.push_back({x, y}); } chainPoly(d, P); }
         {   // vértices: los que caen en el mismo punto de esta vista comparten marca y número («2,3»); el número va en el cuadrante libre de líneas y de otros números
             std::vector<std::array<double, 4>> segs;   // líneas de la vista: perfil y eje
             for (auto& l : v.L) segs.push_back({sx(l[0]), sy(l[1]), sx(l[2]), sy(l[3])});
@@ -1671,7 +1823,7 @@ bool layoutPipe(const std::string& path, const Meta& meta, Drawing& d, bool cabl
     const double tx0 = f.fx1 - tabW - 8;
     double ty = f.zy1 + (planar ? 17 : 25) + 0;   // borde superior disponible
     Pos p0 = d.pos();
-    const double ss = std::min(4.0, 26.0 / (2 * Ro)), cxs = tx0 + 24, cys = ty - 16;
+    const double ss = isoScaleDown(std::min(4.0, 26.0 / (2 * Ro))), cxs = tx0 + 24, cys = ty - 16;
     d.arcs.push_back({cxs, cys, ss * Ro, 0, 360, LineType::Continuous, kThick});
     if (hollow) d.arcs.push_back({cxs, cys, ss * Ri, 0, 360, LineType::Continuous, kThick});
     centerCross(d, cxs, cys, ss * Ro + 3);
@@ -1695,8 +1847,10 @@ bool layoutPipe(const std::string& path, const Meta& meta, Drawing& d, bool cabl
     {   // coordenadas de los vértices virtuales (cruce de ejes)
         const std::vector<double> w = {14, 30, 30, 30};
         text(d, tx0, y + 1.9, th, T("Vértices (intersección de ejes)")); const double yt = y;
-        row(tx0, {"Pt", "X", "Y", "Z"}, w, true);
-        for (size_t i = 0; i < V.size(); i++) row(tx0, {std::to_string(i + 1), fmt(cz(V[i].X() - P0.X())), fmt(cz(V[i].Y() - P0.Y())), fmt(cz(V[i].Z() - P0.Z()))}, w, false);
+        row(tx0, {"Pt", gImperialUnits ? "X [in]" : "X [mm]", gImperialUnits ? "Y [in]" : "Y [mm]", gImperialUnits ? "Z [in]" : "Z [mm]"}, w, true);
+        double vmax = 0; for (auto& q : V) vmax = std::max({vmax, std::fabs(q.X() - P0.X()), std::fabs(q.Y() - P0.Y()), std::fabs(q.Z() - P0.Z())});
+        auto sn = [&](double c) { return std::fabs(c) < 0.002 * vmax ? 0.0 : c; };   // ruido del ajuste de ejes (≈0,1 % de la extensión): decisión propia, N12
+        for (size_t i = 0; i < V.size(); i++) row(tx0, {std::to_string(i + 1), fmt(cz(sn(V[i].X() - P0.X()))), fmt(cz(sn(V[i].Y() - P0.Y()))), fmt(cz(sn(V[i].Z() - P0.Z())))}, w, false);
         vbar(tx0, w, yt, y);
     }
     y -= rowH * 1.6;
@@ -1873,7 +2027,7 @@ bool layoutHarness(const std::string& path, const Meta& meta, Drawing& d) {
     std::vector<std::string> notes;
     notes.push_back(T("Mazo ramificado") + " Ø" + fmt(2 * Ro) + "; " + std::to_string(brs.size()) + " " + T("ramales") + ", " + std::to_string(order.size()) + " " + T("nodos"));
     notes.push_back(T("Longitud total de ramales (eje)") + " = " + fmt(tot) + " (" + T("medida") + ")");
-    notes.push_back(T("Tolerancia de longitud de ramal: la de la documentación de ingeniería; si no, IPC/WHMA-A-620E Tabla 11-1"));
+    notes.push_back(T("Tolerancia general") + ": " + (meta.generalTolerance.empty() ? T("NO DEFINIDO") : meta.generalTolerance));   // M3: sin dato del usuario → NO DEFINIDO (rojo), no tabla ajena
     { double rmin = 1e18; for (auto& e : el) if (e.arc && e.R > 0) rmin = std::min(rmin, e.R);
       if (rmin < 5 * 2 * Ro) notes.push_back(T("AVISO: radio de curvado del eje") + " " + fmt(rmin) + " < 5×Ø = " + fmt(10 * Ro) + " (IPC/WHMA-A-620E Tabla 14-1, " + T("valor de referencia; comprobar con el tipo de cable") + ")"); }
     notes.push_back(T("Origen de coordenadas en el extremo 1 (ISO 129-1, 8.5.1); rotación entre planos de curvado mirando del extremo 1 al 2, la primera curva es la referencia").substr(0, T("Origen de coordenadas en el extremo 1 (ISO 129-1, 8.5.1); rotación entre planos de curvado mirando del extremo 1 al 2, la primera curva es la referencia").find(';')));
@@ -1906,7 +2060,7 @@ bool layoutHarness(const std::string& path, const Meta& meta, Drawing& d) {
         auto sx = [&](double u) { return bx + s * (u - v.u0); }; auto sy = [&](double w) { return by + s * (w - v.w0); };
         for (auto& l : v.L) ln(d, sx(l[0]), sy(l[1]), sx(l[2]), sy(l[3]), kThick);
         auto proj = [&](const gp_Pnt& q, double& x, double& y) { gp_Vec w(gp_Pnt(0, 0, 0), q); x = sx(w.Dot(v.X)); y = sy(w.Dot(v.Y)); };
-        for (auto& b : brs) for (size_t i = 0; i + 1 < b.poly.size(); i++) { double x1, y1, x2, y2; proj(b.poly[i], x1, y1); proj(b.poly[i + 1], x2, y2); if (std::hypot(x2 - x1, y2 - y1) > 0.05) ln(d, x1, y1, x2, y2, 0.18, LineType::Center); }
+        for (auto& b : brs) { std::vector<std::array<double, 2>> P; for (auto& q : b.poly) { double x, y; proj(q, x, y); P.push_back({x, y}); } chainPoly(d, P); }
         // posiciones de nodo en la hoja y dirección media de sus ramales
         std::vector<double> npx(nodes.size()), npy(nodes.size()), dx(nodes.size(), 0), dy(nodes.size(), 0); double gx = 0, gy = 0;
         for (size_t i = 0; i < nodes.size(); i++) { proj(nodes[i], npx[i], npy[i]); gx += npx[i] / nodes.size(); gy += npy[i] / nodes.size(); }
@@ -1940,11 +2094,11 @@ bool layoutHarness(const std::string& path, const Meta& meta, Drawing& d) {
             std::string t = "R" + std::to_string(bi + 1); if (!dimmed) t += " L=" + fmt(b.len);   // longitud desarrollada del eje (ISO 129-1 §7.15, §7.6)
             const double tw = textW(t, 3.0), ox = (straight && std::fabs(nx) > 0.5) ? (-sgn * nx > 0 ? 2.0 : -tw - 2.0) : (straight ? -tw / 2 : (lx >= bx + s * 0 && lx > gx ? 0.0 : -tw));   // texto junto a la línea, no encima
             double qx = lx + ox, qy = ly - 1.0;
-            if (hitBox(qx, qy, qx + tw, qy + 3.0)) {   // hilo o cota encima: se busca el hueco más cercano
+            if (hitBox(qx - 0.6, qy - 1.4, qx + tw + 0.6, qy + 4.4)) {   // hilo o cota encima (con margen: B6, «R4 L=60» tocaba la línea de cota): se busca el hueco más cercano
                 bool ok = false; double bd = 1e9;
                 for (int ix = -2; ix <= 2; ix++) for (int iy = -3; iy <= 3; iy++) {
                     const double cx2 = qx + ix * (tw * 0.5 + 1.0), cy2 = qy + iy * 3.4, dd = std::hypot(ix * (tw * 0.5 + 1.0), iy * 3.4);
-                    if (dd < bd && !hitBox(cx2, cy2, cx2 + tw, cy2 + 3.0)) { bd = dd; lx = cx2; ly = cy2 + 1.0; ok = true; }
+                    if (dd < bd && !hitBox(cx2 - 0.6, cy2 - 1.4, cx2 + tw + 0.6, cy2 + 4.4)) { bd = dd; lx = cx2; ly = cy2 + 1.0; ok = true; }
                 }
                 if (ok) { qx = lx; qy = ly - 1.0; }
             }
@@ -1993,7 +2147,7 @@ bool layoutHarness(const std::string& path, const Meta& meta, Drawing& d) {
     // ---- sección del hilo y tablas
     const double tx0 = f.fx1 - tabW - 8; const double ty = f.zy1 + (planar ? 17 : 25);
     Pos p0 = d.pos();
-    const double ss = std::min(4.0, 26.0 / (2 * Ro)), cxs = tx0 + 24, cys = ty - 16;
+    const double ss = isoScaleDown(std::min(4.0, 26.0 / (2 * Ro))), cxs = tx0 + 24, cys = ty - 16;
     d.arcs.push_back({cxs, cys, ss * Ro, 0, 360, LineType::Continuous, kThick});
     centerCross(d, cxs, cys, ss * Ro + 3);
     dimH(d, cxs - ss * Ro, cxs + ss * Ro, cys - ss * Ro, cys - ss * Ro, cys - ss * Ro - 8, "Ø" + fmt(2 * Ro), "diameter", 2 * Ro);
@@ -2013,7 +2167,7 @@ bool layoutHarness(const std::string& path, const Meta& meta, Drawing& d) {
     {
         const std::vector<double> w = {14, 30, 30, 30};
         text(d, tx0, y + 1.9, th, T("Nodos (cruce de ejes)")); const double yt = y;
-        row(tx0, {"Pt", "X", "Y", "Z"}, w, true);
+        row(tx0, {"Pt", gImperialUnits ? "X [in]" : "X [mm]", gImperialUnits ? "Y [in]" : "Y [mm]", gImperialUnits ? "Z [in]" : "Z [mm]"}, w, true);
         for (size_t i = 0; i < order.size(); i++) { const gp_Pnt& q = nodes[order[i]]; row(tx0, {std::to_string(i + 1), fmt(cz(q.X() - P0.X())), fmt(cz(q.Y() - P0.Y())), fmt(cz(q.Z() - P0.Z()))}, w, false); }
         vbar(tx0, w, yt, y);
     }
@@ -2021,7 +2175,7 @@ bool layoutHarness(const std::string& path, const Meta& meta, Drawing& d) {
     {
         const std::vector<double> w = {14, 22, 22, 24, 22};
         text(d, tx0, y + 1.9, th, T("Ramales")); const double yt = y;
-        row(tx0, {"R", T("De nodo"), T("A nodo"), "L", T("curvas")}, w, true);
+        row(tx0, {"R", T("De nodo"), T("A nodo"), "L", [] { std::string c = T("curvas"); if (!c.empty() && c[0] >= 'a' && c[0] <= 'z') c[0] -= 32; return c; }()}, w, true);
         for (size_t i = 0; i < brs.size(); i++) row(tx0, {std::to_string(i + 1), std::to_string(num[brs[i].n0] + 1), std::to_string(num[brs[i].n1] + 1), fmt(brs[i].len), std::to_string(brs[i].bends)}, w, false);
         vbar(tx0, w, yt, y);
         text(d, tx0, y - 3.4, 2.5, "L: " + T("Longitud desarrollada (eje)"));
@@ -2039,9 +2193,9 @@ static const char* kDiscWhy[7] = {"", "No se pudo leer el archivo STEP (vacío, 
 std::string reasonTr(const std::string& r, const std::string& lang) {
     double a = 0, b = 0; int n = 0;
     auto sub = [&](const char* es, std::initializer_list<std::string> v) { std::string t = tr(es, lang); int i = 0; for (auto& x : v) { std::string k = "{" + std::to_string(i++) + "}"; size_t p = t.find(k); if (p != std::string::npos) t.replace(p, k.size(), x); } return t; };
-    auto f = [](double v, const char* fm) { char q[32]; std::snprintf(q, sizeof q, fm, v); return std::string(q); };
-    if (std::sscanf(r.c_str(), "pieza embutida: pared %lf mm, Ø%lf (revo", &a, &b) == 2) return sub("pieza embutida: pared {0} mm, Ø{1} (revolución con acuerdos concéntricos)", {f(a, "%.2f"), f(b, "%.0f")});
-    if (std::sscanf(r.c_str(), "pieza embutida: pared %lf mm, Ø%lf con fondo", &a, &b) == 2) return sub("pieza embutida: pared {0} mm, Ø{1} con fondo cerrado", {f(a, "%.2f"), f(b, "%.0f")});
+    auto f = [&](double v, const char* fm) { char q[32]; std::snprintf(q, sizeof q, fm, v); std::string o = q; if (decimalComma(lang)) { auto i = o.find('.'); if (i != std::string::npos) o[i] = ','; } return o; };   // B5: coma decimal también en el motivo del descarte
+    if (std::sscanf(r.c_str(), "pieza embutida: pared %lf mm, Ø%lf (revo", &a, &b) == 2) return sub("pieza embutida: pared {0} mm, Ø{1} (revolución con acuerdos concéntricos)", {f(a, "%.2f"), f(b, "%.0f") + " mm"});
+    if (std::sscanf(r.c_str(), "pieza embutida: pared %lf mm, Ø%lf con fondo", &a, &b) == 2) return sub("pieza embutida: pared {0} mm, Ø{1} con fondo cerrado", {f(a, "%.2f"), f(b, "%.0f") + " mm"});
     if (std::sscanf(r.c_str(), "chapa de %lf mm con plegados", &a) == 1) return sub("chapa de {0} mm con plegados concéntricos", {f(a, "%.2f")});
     if (std::sscanf(r.c_str(), "lámina de %lf mm", &a) == 1) return sub("lámina de {0} mm", {f(a, "%.2f")});
     if (std::sscanf(r.c_str(), "forma libre: %lf%% del", &a) == 1) return sub("forma libre: {0}% del área son superficies no analíticas", {f(a, "%.0f")});
@@ -2082,8 +2236,9 @@ Drawing layoutDiscard(const Classification& c, const Meta& meta, const std::stri
     bool ok;
     { double a = glyphs("PIEZA FUERA DE ALCANCE: NO SE GENERA PLANO", 20, y, 9, ok);
       if (ok) y -= a + 8; else { d.texts.push_back({20, y, 9, tr("PIEZA FUERA DE ALCANCE: NO SE GENERA PLANO", meta.lang), 0, true}); y -= 16; } }
-    { double a = glyphs("Archivo", 20, y, 4, ok);
-      if (ok) { d.texts.push_back({20 + 18, y, 4, ": " + name}); y -= 14; } else { d.texts.push_back({20, y, 4, tr("Archivo", meta.lang) + ": " + name}); y -= 14; (void)a; } }
+    const char* lblK = name.find('.') != std::string::npos ? "Archivo" : "Pieza";   // en un conjunto el nombre es el de la pieza, no un archivo
+    { double a = glyphs(lblK, 20, y, 4, ok);
+      if (ok) { d.texts.push_back({20 + 18, y, 4, ": " + name}); y -= 14; } else { d.texts.push_back({20, y, 4, tr(lblK, meta.lang) + ": " + name}); y -= 14; (void)a; } }
     for (const char* kk : {kDiscWhy[k], kDiscAlt[k]}) {
         double a = glyphs(kk, 20, y, 5, ok);
         if (ok) y -= a + 6; else { for (auto& l : wrap(tr(kk, meta.lang), 80)) { d.texts.push_back({20, y, 5, l}); y -= 8; } y -= 6; }

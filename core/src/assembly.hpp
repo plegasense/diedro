@@ -13,3 +13,5 @@ std::vector<Drawing> layoutAssembly(const std::string& path, const Meta& meta, c
 // Dibuja una pieza suelta (clasificador + motor). En error, err no queda vacío.
 Drawing drawPart(const std::string& path, const Meta& meta, std::string& err);
 }  // namespace diedro
+#include <atomic>
+extern std::atomic<int> gLiveWorkers;   // hilos de pieza de conjunto aún vivos (un hilo abandonado por tiempo sigue usando globales del motor)

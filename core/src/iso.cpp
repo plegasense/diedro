@@ -111,7 +111,7 @@ bool addIso(Drawing& d, const std::vector<IsoItem>& items, double maxScale, IsoR
     double gx0, gy0, gz0, gx1, gy1, gz1; gb.Get(gx0, gy0, gz0, gx1, gy1, gz1);
     // malla y partición de triángulos relativas al conjunto entero: las piezas pequeñas no inflan el PDF
     const double diag = std::sqrt((gx1 - gx0) * (gx1 - gx0) + (gy1 - gy0) * (gy1 - gy0) + (gz1 - gz0) * (gz1 - gz0));
-    const double defl = std::max((nf > 1500 ? 0.008 : nf > 300 ? 0.004 : 0.002) * diag, 1e-3);
+    const double defl = std::max((nf > 1500 ? 0.008 : nf > 300 ? 0.004 : 0.0012) * diag, 1e-3);
     for (auto& it : items) {
         if (it.sh.IsNull()) continue;
         BRepMesh_IncrementalMesh(it.sh, defl, false, 0.5, false);
@@ -242,7 +242,7 @@ bool addIso(Drawing& d, const std::vector<IsoItem>& items, double maxScale, IsoR
                 if (BRep_Tool::Continuity(ed, f1, f2) >= GeomAbs_G1) continue;   // empalme tangente
             } else if (fl.Extent() == 1 && (hasSolid || BRep_Tool::IsClosed(ed, TopoDS::Face(fl.First())))) continue;   // borde libre: en un sólido es una cara suelta del STEP, no contorno
             BRepAdaptor_Curve cv(ed);
-            GCPnts_QuasiUniformDeflection ud(cv, std::max(defl, 1e-4));
+            GCPnts_QuasiUniformDeflection ud(cv, std::max(std::min(defl, 0.1 / std::max(s, 1e-6)), 1e-4));   // flecha ≤0,1 mm sobre el papel: agujeros redondos, no octógonos
             std::vector<V3> pts;
             if (ud.IsDone()) for (int q = 1; q <= ud.NbPoints(); q++) { gp_Pnt g = ud.Value(q); pts.push_back({g.X(), g.Y(), g.Z()}); }
             if (pts.size() < 2) continue;
@@ -282,6 +282,6 @@ bool addIso(Drawing& d, const std::vector<IsoItem>& items, double maxScale, IsoR
 bool addIsoStep(Drawing& d, const std::string& path) {
     TopoDS_Shape sh;
     if (!readShapeCached(path, sh)) return false;
-    return addIso(d, {{sh, 0}}, d.scale > 0 ? 1.5 * d.scale : 0);   // ilustrativa: nunca mayor que las vistas acotadas
+    return addIso(d, {{sh, 0}}, d.scale > 0 ? (d.scale < 1 ? d.scale : 1.5 * d.scale) : 0);   // ilustrativa: nunca mayor que las vistas acotadas
 }
 }  // namespace diedro

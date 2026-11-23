@@ -493,6 +493,7 @@ Profile analyzeStep(const std::string& path) {
         else if (it != out.unsupported.end() && it->second >= 8) {   // rosca exterior: los flancos B-spline montan sobre un cilindro exterior (núcleo) y no pasan de ~1,35× su radio
             for (auto& s : out.segs) if (!s.inner && s.kind == Seg::Line && std::fabs(s.r0 - s.r1) < 1e-6 && s.r0 > 0 && bsRmin >= s.r0 - 0.3 && bsRmax <= s.r0 * 1.35 && bsRmax > s.r0 + 1e-3) {
                 out.unsupported.erase(it); out.unsupArea -= bsArea; out.threadExtD = 2 * bsRmax;
+                out.thrRootR = s.r0; out.thrZ0 = s.z0; out.thrZ1 = s.z1; s.r0 = s.r1 = bsRmax;   // ISO 6410-1 §5.1: cresta gruesa (Ø nominal), fondo fino
                 auto pw = out.unsupported.find("plano paralelo al eje (plano/chavetero/ranura)");   // los planos axiales pequeños del arranque/salida de la rosca son de la rosca
                 int nw = 0; double aw = 0;
                 for (size_t k = 0; k < walls.size(); k++) if (!wUsed[k] && std::fabs(walls[k].h) < 1e-6 && walls[k].tw < 2 * (bsRmax - bsRmin) + 0.2) { nw++; aw += walls[k].tw * (walls[k].z1 - walls[k].z0); }
@@ -533,6 +534,7 @@ Profile analyzeStep(const std::string& path) {
         }
     }
     out.length = zmax - zmin;
+    if (out.thrRootR > 0) { double a0 = trz(out.thrZ0), a1 = trz(out.thrZ1); out.thrZ0 = std::min(a0, a1); out.thrZ1 = std::max(a0, a1); }
     // redondeo a 1e-6 para evitar ruido numérico en cotas
     auto rd6 = [](double& v) { v = std::round(v * 1e6) / 1e6; };
     for (auto& s : out.segs) { rd6(s.z0); rd6(s.z1); rd6(s.r0); rd6(s.r1); rd6(s.cz); rd6(s.cr); rd6(s.rad); rd6(s.mz); rd6(s.mr); }

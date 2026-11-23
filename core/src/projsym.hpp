@@ -3,11 +3,12 @@
 #pragma once
 #include "drawing.hpp"
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 namespace diedro {
 // ISO 128-30 Anexo A / ISO 5456-2: símbolo del método de proyección del primer diedro (tronco de cono a la izquierda,
 // circunferencias concéntricas a la derecha). (x,y) = esquina inferior izquierda; alto 7, ancho ≈ 21.
-inline bool gThirdAngle = false;   // método de proyección pedido por el usuario (ASME / ISO 128-30 Anexo B); false = primer diedro (ISO, por defecto)
+inline std::atomic<bool> gThirdAngle{false};   // método de proyección pedido por el usuario (ASME / ISO 128-30 Anexo B); false = primer diedro (ISO, por defecto)
 inline void projSymbol(Drawing& d, double x, double y) {
     d.symL0 = d.lines.size(); d.symA0 = d.arcs.size();
     const double R = 3.5, r = 1.75, L = 9, cy = y + R, cx = x + L + 5 + R, w = 0.25;
@@ -54,7 +55,7 @@ inline bool thirdAngle(Drawing& d, int front, int top, int side, int extra = -1)
     if (mvT || mvS) {
         mv(front, dxF, dyAll);
         if (mvT) mv(top, dxF, dyT + dyAll);
-        if (mvS) { mv(side, sdx, dyAll); mv(extra, sdx, dyAll, F.x1 - 1); }   // el extra solo acompaña al perfil si está a su lado (no si es la axonométrica)
+        if (mvS) { mv(side, sdx, dyAll); const B E = box(extra); mv(extra, sdx, (mvT && E.ok() && E.y1 <= F.y0 + 1) ? dyT + dyAll : dyAll, F.x1 - 1); }   // A-A en la fila de la planta: sube con ella (si no, se sale del marco)   // el extra solo acompaña al perfil si está a su lado (no si es la axonométrica)
     }
     if (d.symL1 > d.symL0 || d.symA1 > d.symA0) {   // símbolo reflejado respecto de su eje vertical
         const double c2 = 2 * d.symXc;

@@ -14,8 +14,9 @@ std::string reasonTr(const std::string& reason, const std::string& lang);   // m
 bool readShapeCached(const std::string& path, TopoDS_Shape& S);   // lectura STEP con caché de un fichero
 bool layoutSpring(const std::string& path, const Meta& meta, Drawing& d);
 extern bool gCamStrict;
-extern int gCamshaftMinLobes;
+extern thread_local int gCamshaftMinLobes;
 extern double gCamMinH;
+struct CamGuard { bool s; double h; explicit CamGuard(double minH = -1) : s(gCamStrict), h(gCamMinH) { gCamStrict = true; if (minH >= 0) gCamMinH = minH; } ~CamGuard() { gCamStrict = s; gCamMinH = h; } };   // B3r3: restaura aunque haya excepción
 bool layoutCam(const std::string& path, const Meta& meta, Drawing& d);
 bool layoutCamshaft(const std::string& path, const Meta& meta, Drawing& d);
 bool layoutHarness(const std::string& path, const Meta& meta, Drawing& d);   // G14: mazo ramificado

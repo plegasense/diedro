@@ -12,6 +12,7 @@ namespace diedro {
 struct Seg {
     enum Kind { Line, Arc, Plane } kind = Line;  // Line = cilindro o cono; Plane = cara perpendicular al eje
     bool inner = false;                          // true = superficie interior (taladro)
+    bool cut = false;                            // solo detalle: cilindro recortado por la ventana (su Ø ya está en la vista principal)
     bool brk = false;                            // solo vistas de detalle: borde de corte (línea fina), no una cara real
     double z0 = 0, r0 = 0, z1 = 0, r1 = 0;       // extremos (z0 <= z1; en Plane r0 < r1)
     double cz = 0, cr = 0, rad = 0, mz = 0, mr = 0;  // solo Arc: centro, radio y punto medio
@@ -43,6 +44,7 @@ struct Profile {
     double length = 0;                           // z va de 0 a length (cara de referencia en z=0)
     std::map<std::string, int> unsupported;     // rasgos no de revolución detectados (texto -> nº de caras)
     bool thread = false;
+    double thrRootR = 0, thrZ0 = 0, thrZ1 = 0;   // rosca exterior (ISO 6410-1 §5.1): radio de fondo (línea fina) y zona; el contorno grueso va a la cresta
     double threadExtD = 0;   // Ø de cresta de una rosca exterior helicoidal no modelada (0 = no hay)                         // rosca helicoidal interior no modelada (superficies B-spline coaxiales)
     double unsupArea = 0, totArea = 0, rShape = 0;           // área de caras no de revolución y total (mm²)
     std::vector<GdtTol> gdt;                      // tolerancias geométricas (forma/posición) que trae el STEP

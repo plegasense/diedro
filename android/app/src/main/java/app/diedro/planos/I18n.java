@@ -99,7 +99,7 @@ final class I18n {
     }
 
     static String num(double v) {
-        String s = v == Math.rint(v) ? String.valueOf((long) v) : String.format(Locale.US, "%.2f", v);
-        return decimalComma(lang()) ? s.replace('.', ',') : s;
+        String s = v == Math.rint(v) ? String.valueOf((long) v) : String.format(Locale.US, "%.2f", v).replaceAll("0+$", "").replaceAll("\\.$", "");
+        return decimalComma(lang()) && !imperial() && !thirdAngle() ? s.replace('.', ',') : s;   // B7: como el núcleo (ASME Y14.5 §1.4: punto en pulgadas / tercer diedro)
     }
 }

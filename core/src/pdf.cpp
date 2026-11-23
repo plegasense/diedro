@@ -64,7 +64,8 @@ std::string toPdf(const Drawing& d) { return toPdfMulti({d}); }
 std::string toPdfMulti(const std::vector<Drawing>& pages) {
     std::map<unsigned, std::pair<int, unsigned>> used;
     std::vector<std::string> contents;
-    for (const Drawing& d : pages) {
+    for (const Drawing& d0 : pages) {
+    Drawing d = d0; mergeHidden(d.lines);
     std::ostringstream c;
     {   // a trazos: los segmentos encadenados (círculos teselados) van en un solo trazado para que el patrón no se reinicie en cada uno
         bool open = false; double ex = 0, ey = 0, ew = 0;

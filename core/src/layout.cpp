@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) Plegasense
 // Profile -> Drawing: vista/sección, acotación en paralelo desde la cara de referencia, rayado, cajetín.
+#include <functional>
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -35,7 +36,7 @@ std::string decSep(std::string s) {
     return s;
 }
 std::string fmtK(double v) { return trimNum(v, 2); }                                           // clave canónica (mm, punto)
-std::string fmt(double v) { return decSep(gLoc.imperial ? trimNum(v / 25.4, 3) : trimNum(v, 2)); }  // longitud mostrada
+std::string fmt(double v) { return decSep(gLoc.imperial ? fmtIn(v) : trimNum(v, 2)); }  // longitud mostrada
 std::string fnum(double v) { return decSep(trimNum(v, 2)); }                                   // magnitud sin unidad (ángulo, relación)
 // ISO 129-1 6.2: una desviación nula se escribe «0» sin signo
 std::string devTxt(double v) { return std::fabs(v) < 1e-9 ? "0" : (v > 0 ? "+" : "-") + fmt(std::fabs(v)); }
@@ -52,8 +53,9 @@ std::string Tf(const char* es, std::initializer_list<std::string> a) {  // plant
 // nombres de rasgos no soportados (analyze.cpp los genera en español): se traduce la parte de texto, no las cifras
 std::string unsupT(const std::string& k) {
     auto pre = [&](const char* p) { return k.rfind(p, 0) == 0; };
-    if (pre("cilindro radial Ø")) { auto e = k.find(" ("); return T("cilindro radial") + " " + k.substr(16, e - 16) + " (" + T("taladro/resalte") + ")"; }
-    if (pre("cilindro no coaxial Ø")) return T("cilindro no coaxial") + " " + k.substr(19);
+    auto dia = [&](size_t at) { return "Ø" + fmt(std::atof(k.c_str() + at)); };   // la clave guarda mm: se muestra en la unidad del plano
+    if (pre("cilindro radial Ø")) return T("cilindro radial") + " " + dia(k.find("Ø") + 2) + " (" + T("taladro/resalte") + ")";
+    if (pre("cilindro no coaxial Ø")) return T("cilindro no coaxial") + " " + dia(k.find("Ø") + 2);
     if (pre("superficie ")) return T("superficie") + " " + k.substr(11);
     return T(k.c_str());
 }
@@ -271,6 +273,7 @@ struct Opt {
     bool dense = false;
     double minS = 0;                   // escala mínima exigida (agrandar la hoja si hace falta)
     double wz0 = 0, wz1 = 0;           // ventana de detalle (wz1 > wz0): sus cotas van en la vista de detalle
+    std::vector<double> mainR;         // detalle: radios que la vista principal ya acota (fuera de la ventana)
     bool detail = false;               // dibuja solo la vista de detalle (sin marco ni cajetín) a la escala ds
     double ds = 0;
     const Drawing* det = nullptr;      // vista de detalle ya dibujada (se inserta arriba) y su caja
@@ -278,6 +281,9 @@ struct Opt {
     std::string detLabel;
 };
 
+// Vista interrumpida (ISO 128-3 §5.1.3, decisión propia en la forma de la rotura): z>=zc está desplazado -delta; las cotas rotulan la longitud real
+static thread_local struct { double zc = -1, delta = 0; } gBrk;
+static double realZ(double z) { return (gBrk.delta > 0 && z > gBrk.zc + 1e-6) ? z + gBrk.delta : z; }
 Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
     gLoc.lang = meta.lang;
     gLoc.imperial = meta.imperial;
@@ -576,7 +582,7 @@ Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
     std::vector<Ord> ords;
     int nStack = 0;
     for (auto& b : base) {
-        if (near(b.z0, 0) && b.z1 > kEps) { std::string t = fmt(b.z1); ords.push_back({b.z1, t, withTol(t, fmtK(b.z1), b.z1)}); }
+        if (near(b.z0, 0) && b.z1 > kEps) { std::string t = fmt(realZ(b.z1)); ords.push_back({b.z1, t, withTol(t, fmtK(realZ(b.z1)), realZ(b.z1))}); }
         else nStack++;
     }
     const bool useOrd = ords.size() >= 5;
@@ -704,6 +710,28 @@ Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
 
     d.groups = {T("Vista"), T("Vista lateral"), T("Detalle")};
     const Pos pView = d.pos();
+    // ISO 128-44 cl. 4: en una pieza de revolución con taladros equidistantes en corona (fuera del plano de corte) se pueden representar girados al plano de corte
+    struct RotH { double r0, r1, z0, z1; };
+    std::vector<RotH> rotH;
+    if (anyInner && !polyPrism && p.rootR <= kEps && !o.detail)
+        for (auto& g : groups) {
+            const double dist = std::hypot(g.pos[0].x, g.pos[0].y);
+            if (g.pos.size() < 3 || dist < 1e-3) continue;
+            bool eqd = true; for (auto& q : g.pos) eqd &= near(std::hypot(q.x, q.y), dist);
+            if (eqd) for (auto& h : g.st) if (h.r < dist) rotH.push_back({dist - h.r, dist + h.r, h.z0, h.z1});
+        }
+    auto carvedFace = [&](const Seg& g, double sg) {   // cara plana interrumpida por la abertura de un taladro girado
+        if (rotH.empty() || g.kind != Seg::Plane) return false;
+        const double ra = std::min(g.r0, g.r1), rb = std::max(g.r0, g.r1);
+        std::vector<std::pair<double, double>> cut;
+        for (auto& h : rotH) if ((near(h.z0, g.z0) || near(h.z1, g.z0)) && h.r1 > ra && h.r0 < rb) cut.push_back({std::max(h.r0, ra), std::min(h.r1, rb)});
+        if (cut.empty()) return false;
+        std::sort(cut.begin(), cut.end());
+        double cur = ra;
+        for (auto& c : cut) { if (c.first > cur + 1e-6) line(d, X(g.z0), Y(sg * cur), X(g.z0), Y(sg * c.first), kThick); cur = std::max(cur, c.second); }
+        if (cur < rb - 1e-6) line(d, X(g.z0), Y(sg * cur), X(g.z0), Y(sg * rb), kThick);
+        return true;
+    };
     // ---- contorno (ambas mitades)
     for (int i = 0; i < n; i++) {
         const Seg& g = p.segs[i];
@@ -712,7 +740,7 @@ Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
                 double a0, a1;
                 arcAngles(g, sg, a0, a1);
                 d.arcs.push_back({X(g.cz), Y(sg * g.cr), s * g.rad, a0, a1, LineType::Continuous, kThick});
-            } else {
+            } else if (!carvedFace(g, sg)) {
                 line(d, X(g.z0), Y(sg * g.r0), X(g.z1), Y(sg * g.r1), g.brk ? kThin : kThick);
             }
         }
@@ -739,18 +767,71 @@ Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
         auto loops = materialLoops(p, hyP, &sockW);
         for (auto& w : sockW) for (double sg : {1.0, -1.0}) line(d, X(w.first.z), Y(sg * w.first.r), X(w.second.z), Y(sg * w.second.r), kThick);
         if (loops.empty()) d.warnings.push_back(T("Perfil abierto: no se pudo rayar la sección."));
+        // M2 (ISO 128-44 / ISO 128-40: los ejes macizos no se cortan en longitudinal): si los huecos interiores son cortos (no un taladro pasante)
+        // se raya solo un corte local alrededor de cada hueco (+3 mm), delimitado por línea fina; decisión propia: borde recto, no a mano alzada
+        std::vector<std::pair<double, double>> zones;
+        if (p.rootR <= kEps && !polyPrism) {
+            std::vector<std::pair<double, double>> iv;
+            for (auto& g : p.segs) if (g.inner) { const double za = endPt(g, 0).z, zb = endPt(g, 1).z; iv.push_back({std::min(za, zb), std::max(za, zb)}); }
+            std::sort(iv.begin(), iv.end());
+            double tot = 0;
+            for (auto& q : iv) { if (!zones.empty() && q.first <= zones.back().second + 6) zones.back().second = std::max(zones.back().second, q.second); else zones.push_back(q); }
+            for (auto& z : zones) tot += z.second - z.first;
+            if (zones.empty() || tot > 0.4 * L) zones.clear();
+            for (auto& z : zones) { z.first = std::max(0.0, z.first - 3); z.second = std::min(L, z.second + 3); }
+        }
         for (auto& lp : loops)
             for (double sg : {1.0, -1.0}) {
                 std::vector<V2> poly;
                 for (auto& q : lp) poly.push_back({X(q.z), Y(sg * q.r)});
-                if (p.rootR > kEps) {   // dentado: en la sección axial los dientes no se rayan (el rayado llega al pie)
+                if (!zones.empty()) {
+                    for (auto& z : zones) {
+                        const double xa = X(z.first), xb = X(z.second);
+                        hatch(d, clipPoly(clipPoly(poly, [&](V2 q) { return xa - q.x; }), [&](V2 q) { return q.x - xb; }), 3.0);
+                    }
+                    if (sg > 0)   // borde del corte local: línea fina vertical hasta el contorno exterior en ese z (una vez por zona; el ancho es simétrico)
+                        for (auto& z : zones) for (int e = 0; e < 2; e++) {
+                            const double zz = e ? z.second : z.first;
+                            if (zz < 0.01 || zz > L - 0.01) continue;
+                            double ro = 0;
+                            for (auto& l2 : loops) for (size_t k = 0; k < l2.size(); k++) {
+                                const Pt &a1 = l2[k], &b1 = l2[(k + 1) % l2.size()];
+                                if ((a1.z - zz) * (b1.z - zz) <= 0 && std::fabs(b1.z - a1.z) > 1e-9) ro = std::max(ro, a1.r + (b1.r - a1.r) * (zz - a1.z) / (b1.z - a1.z));
+                            }
+                            if (ro > kEps) {   // M5/m3 (ISO 128-44 §4: el corte parcial se limita con línea continua fina a mano alzada, ISO 128-24 tipo 01.1): ondulación suave de ±0.6 mm
+                                const double ya = Y(-ro), yb = Y(ro), x0 = X(zz), n = std::max(4, (int)std::ceil(std::fabs(yb - ya) / 1.2));
+                                double px = x0, py = ya;
+                                for (int i = 1; i <= n; i++) { const double t = (double)i / n, nx = x0 + (i == n ? 0.0 : 0.6 * std::sin(2 * M_PI * t * std::max(1.0, std::fabs(yb - ya) / 9.0))), ny = ya + (yb - ya) * t; line(d, px, py, nx, ny, kThin); px = nx; py = ny; }
+                            }
+                        }
+                } else if (p.rootR > kEps) {   // dentado: en la sección axial los dientes no se rayan (el rayado llega al pie)
                     const double xa = X(p.rootZ0), xb = X(p.rootZ1), y0 = Y(0), rr = s * p.rootR;
                     hatch(d, clipPoly(poly, [&](V2 q) { return sg * (q.y - y0) - rr; }), 3.0);
                     hatch(d, clipPoly(poly, [&](V2 q) { return q.x - xa; }), 3.0);
                     hatch(d, clipPoly(poly, [&](V2 q) { return xb - q.x; }), 3.0);
+                } else if (!rotH.empty()) {   // rayado con los taladros girados al plano de corte recortados
+                    std::function<void(std::vector<V2>, size_t)> rec = [&](std::vector<V2> pl, size_t k) {
+                        if (pl.size() < 3) return;
+                        if (k == rotH.size()) { hatch(d, pl, 3.0); return; }
+                        const double xl = X(rotH[k].z0), xr = X(rotH[k].z1), ya = Y(sg * rotH[k].r0), yb = Y(sg * rotH[k].r1), yl = std::min(ya, yb), yh = std::max(ya, yb);
+                        rec(clipPoly(pl, [&](V2 q) { return q.x - xl; }), k + 1);
+                        rec(clipPoly(pl, [&](V2 q) { return xr - q.x; }), k + 1);
+                        auto mid = clipPoly(clipPoly(pl, [&](V2 q) { return xl - q.x; }), [&](V2 q) { return q.x - xr; });
+                        rec(clipPoly(mid, [&](V2 q) { return yh - q.y; }), k + 1);
+                        rec(clipPoly(mid, [&](V2 q) { return q.y - yl; }), k + 1);
+                    };
+                    rec(poly, 0);
                 } else hatch(d, poly, 3.0);
             }
+        for (auto& h : rotH) for (double sg : {1.0, -1.0}) {   // paredes del taladro (trazo grueso) y fondo si es ciego
+            line(d, X(h.z0), Y(sg * h.r0), X(h.z1), Y(sg * h.r0), kThick); line(d, X(h.z0), Y(sg * h.r1), X(h.z1), Y(sg * h.r1), kThick);
+            for (double zz : {h.z0, h.z1}) if (zz > kEps && zz < L - kEps) {
+                bool onFace = false; for (auto& g : p.segs) if (g.kind == Seg::Plane && near(g.z0, zz) && std::max(g.r0, g.r1) > h.r0 && std::min(g.r0, g.r1) < h.r1) onFace = true;
+                if (!onFace) line(d, X(zz), Y(sg * h.r0), X(zz), Y(sg * h.r1), kThick);
+            }
+        }
     }
+    if (p.thrRootR > kEps) for (double sg : {1.0, -1.0}) line(d, X(p.thrZ0), Y(sg * p.thrRootR), X(p.thrZ1), Y(sg * p.thrRootR), kThin);   // fondo de rosca exterior, ISO 6410-1 §5.1
     if (p.rootR > kEps && anyInner) for (double sg : {1.0, -1.0}) line(d, X(p.rootZ0), Y(sg * p.rootR), X(p.rootZ1), Y(sg * p.rootR), 0.25);   // pie del dentado en la sección (fino)
     // taladros axiales: líneas ocultas en la vista lateral
     for (auto& g : groups)
@@ -760,17 +841,32 @@ Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
                 for (double sg : {1.0, -1.0}) line(d, X(h.z0), Y(q.y + sg * h.r), X(h.z1), Y(q.y + sg * h.r), 0.25, LineType::Hidden);
     // línea de eje (sobresale 3 mm de cada extremo)
     line(d, X(0) - 4, cy, X(L) + 4, cy, 0.18, LineType::Center);
+    if (gBrk.delta > 0 && !o.detail) {   // símbolo de rotura: dos trazos finos en zigzag a ambos lados de la interrupción
+        const double xb = X(gBrk.zc), hh = rmax * s * 1.15 + 1.5;
+        for (double dx : {-1.2, 1.2}) {
+            double px = xb + dx, py = cy - hh;
+            const int N = 6;
+            for (int i = 1; i <= N; i++) { double nx = xb + dx + (i % 2 ? 1.0 : -1.0) * 0.9, ny = cy - hh + 2 * hh * i / N; line(d, px, py, nx, ny, kThin); px = nx; py = ny; }
+        }
+    }
 
     // ---- diámetros: una cota por radio distinto y lado (exterior/interior)
-    struct DD { double r; bool inner; double zm; };
+    struct DD { double r; bool inner; double zm; bool outer = false; };
     std::vector<DD> done;
-    std::vector<double> usedX;
+    std::vector<double> usedX; std::vector<std::array<double, 3>> leadBox;
     int outN = 0;
+    auto sameN = [&](double r, double za, double zb) -> std::string {   // H2 (ISO 129-1 §5.1/§7: elementos idénticos): una garganta/rebaje estrecho repetido se acota una vez con «n×»
+        if (std::fabs(zb - za) * s >= 6) return "";
+        int c = 0;
+        for (auto& g : p.segs) if (g.kind == Seg::Line && !g.inner && near(g.r0, g.r1) && near(g.r0, r) && (g.z1 - g.z0) * s < 6 && !g.cut) c++;
+        return c >= 2 ? std::to_string(c) + "× " : "";
+    };
     auto addDia = [&](double r, bool inner, double za, double zb) {
         if (r < 0.025) return;
-        for (auto& q : done) if (q.inner == inner && near(q.r, r)) return;
+        for (auto& q : done) if (q.inner == inner && near(q.r, r) && !((zb - za) * s >= 6 && (q.zm < std::min(za, zb) - kEps || q.zm > std::max(za, zb) + kEps))) return;   // A1 (ISO 129-1 §4.1): cada tramo ancho separado del mismo Ø lleva su cota
         double zm = 0.5 * (za + zb);
         std::string t = "Ø" + fmt(2 * r), tk = "Ø" + fmtK(2 * r);
+        bool rep = false, repAllOuter = true; for (auto& q : done) if (q.inner == inner && near(q.r, r)) { rep = true; if (!q.outer) repAllOuter = false; }   // cota repetida (A1): solo si cabe dentro de su propio tramo
         done.push_back({r, inner, zm});
         double x = X(zm);
         for (auto& h : p.rholes) {  // la cota no debe cruzar un taladro radial
@@ -782,13 +878,91 @@ Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
         }
         {  // dos cotas de Ø no deben solaparse en x (rótulo vertical de ~4 mm)
             double xa = X(std::min(za, zb)) + 2.5, xb = X(std::max(za, zb)) - 2.5, x0 = x;
-            auto free = [&](double c) { for (double u : usedX) if (std::fabs(c - u) < 6) return false; return true; };
+            auto free = [&](double c) { for (double u : usedX) if (std::fabs(c - u) < 9) return false; return true; };
             for (int k = 1; !free(x) && k <= 8; k++)
                 for (double c : {x0 + 6.5 * k, x0 - 6.5 * k}) if (c >= xa && c <= xb && free(c)) { x = c; break; }
-            if (!free(x)) {  // sin hueco dentro de la pieza: cota exterior con líneas de referencia
-                x = X(L) + 8 + 7 * outN++;
-                double xe = X(std::max(za, zb));
-                line(d, xe + 1, Y(r), x + 2, Y(r), 0.18); line(d, xe + 1, Y(-r), x + 2, Y(-r), 0.18);
+            bool throughHatch = false;   // un Ø exterior no cruza el rayado de la sección: ISO 129-1 §5.2 (cotas fuera de la pieza, con líneas de referencia)
+            if (!inner && anyInner && !o.detail) for (auto& g : p.segs) if (g.inner && g.kind == Seg::Line && std::max(g.r0, g.r1) > kEps && g.z0 < std::max(za, zb) - kEps && g.z1 > std::min(za, zb) + kEps) throughHatch = true;
+            if (throughHatch) {  // ISO 129-1 §6: la cota junto a su tramo; se busca un x del tramo que no cruce el rayado
+                double best = 1e18;
+                for (double c = xa; c <= xb; c += 0.5) {
+                    bool ok = free(c);
+                    for (auto& g : p.segs) if (ok && g.inner && g.kind == Seg::Line && std::max(g.r0, g.r1) > kEps && c > std::min(X(g.z0), X(g.z1)) - 2.5 && c < std::max(X(g.z0), X(g.z1)) + 2.5) ok = false;
+                    if (ok && std::fabs(c - x0) < best) { best = std::fabs(c - x0); x = c; throughHatch = false; }
+                }
+            }
+            bool grooved = false;
+            if (!inner && !o.detail && (throughHatch || !free(x))) {  // F1 (ISO 129-1 §6: cota junto a su elemento): el fondo de una ranura (menor radio local) se acota dentro de la propia ranura, sin auxiliares que crucen el muñón vecino
+                const double ze = std::min(za, zb), zf = std::max(za, zb);
+                double lr = 0, rr = 0;
+                for (auto& g : p.segs) {
+                    if (g.kind == Seg::Plane || g.inner) continue;
+                    if (g.kind != Seg::Line) continue;
+                    if (g.z0 <= ze + 1e-3 && g.z1 >= ze - 1e-3) lr = std::max(lr, std::max(g.r0, g.r1));
+                    if (g.z0 <= zf + 1e-3 && g.z1 >= zf - 1e-3) rr = std::max(rr, std::max(g.r0, g.r1));
+                }
+                if (lr > r + 0.2 && rr > r + 0.2) {
+                    const double xs0 = X(ze) + 0.6, xe0 = X(zf) - 0.6, xm = 0.5 * (xs0 + xe0);
+                    for (int k = 0; k <= 8 && !grooved; k++)
+                        for (double c : {xm + 0.4 * k, xm - 0.4 * k}) {
+                            bool ok = c >= xs0 && c <= xe0;
+                            for (double u : usedX) if (std::fabs(c - u) < 5.2) ok = false;
+                            if (ok) { x = c; grooved = true; break; }
+                        }
+                }
+            }
+            if (!grooved && !o.detail && std::min(za, zb) > 0.5 && std::max(za, zb) < L - 0.5 && (X(std::max(za, zb)) - X(std::min(za, zb))) < 6 && (throughHatch || !free(x))) {   // H1: Ø de un rebaje estrecho: directriz con flecha sobre el propio rebaje (ISO 129-1 §5.4/§7.1: cota con directriz), no una cota lejos con auxiliares sobre el muñón vecino
+                const double lx = X(zm), tw0 = textW(sameN(r, za, zb) + t, kTxt); double dx0 = 3.0;
+                double lh = 9; bool clash = false;
+                {   // el rótulo no debe pisar otro texto, otra línea ni otro rótulo de directriz
+                    const double rx0 = lx + dx0 - tw0 / 2 - 0.8, rx1 = lx + dx0 + tw0 / 2 + 0.8, ry0 = Y(r) + lh + 0.2, ry1 = Y(r) + lh + kTxt + 1.8;
+                    for (auto& bx : leadBox) if (rx1 > bx[0] - bx[1] / 2 && rx0 < bx[0] + bx[1] / 2 && std::fabs(Y(r) + lh - bx[2]) < 5) clash = true;
+                    for (auto& tt : d.texts) {
+                        if (tt.angle != 0) continue;
+                        const double w2 = textW(tt.s, tt.height);
+                        if (rx1 > tt.x && rx0 < tt.x + w2 && ry1 > tt.y && ry0 < tt.y + tt.height) clash = true;
+                    }
+                    for (auto& ln : d.lines) {
+                        if (ln.type == LineType::Center) continue;
+                        if (std::max(ln.x1, ln.x2) < rx0 || std::min(ln.x1, ln.x2) > rx1 || std::max(ln.y1, ln.y2) < ry0 || std::min(ln.y1, ln.y2) > ry1) continue;
+                        clash = true;
+                    }
+                }
+                if (clash) goto noLead;
+                leadBox.push_back({lx + dx0, tw0, Y(r) + lh});
+                line(d, lx, Y(r), lx + dx0, Y(r) + lh);   // oblicua: una vertical pegada a la pared fina de la garganta se fusionaba con ella (mergeNearParallel)
+                arrow(d, lx, Y(r), dx0, lh);
+                text(d, lx + dx0 - tw0 / 2, Y(r) + lh + 1, kTxt, sameN(r, za, zb) + t);
+                d.dims.push_back({"diameter", 2 * r, t, tk});
+                return;
+            }
+            noLead:
+            if (!grooved && (throughHatch || !free(x))) { done.back().outer = true; if (rep && repAllOuter) return; }
+            if (!grooved && (throughHatch || !free(x))) {  // sin hueco dentro de la pieza: cota exterior con líneas de referencia
+                double xe = X(std::max(za, zb)), xs = X(std::min(za, zb)), xf = X(L) + 8 + 7 * outN, bx = 1e18;
+                if (xf - xe > 15) {  // M2 (ISO 129-1 §6: cota junto al elemento): hueco cercano fuera del tramo, donde las líneas de referencia (a ±r) van por fuera de la silueta vecina
+                    const bool narrow = (xe - xs) < 6;   // H1: Ø de un rebaje estrecho junto a su sitio; las cotas vecinas pueden estar a 6 mm (rótulo de 3,5 mm)
+                    auto okAt = [&](double c, double from) {
+                        bool fr = true; for (double u : usedX) if (std::fabs(c - u) < (narrow ? 6.0 : 9.0)) fr = false;
+                        if (c < X(0) + 3 || c > X(L) - 3 || !fr) return false;
+                        const double lo = c > from ? from + 0.3 : c, hi = c > from ? c : from - 0.3;
+                        for (auto& g : p.segs) {
+                            if (g.kind == Seg::Plane) continue;
+                            const double ga = std::min(X(g.z0), X(g.z1)), gb = std::max(X(g.z0), X(g.z1));
+                            if (gb < lo - 0.1 || ga > hi + 0.1) continue;
+                            if (g.inner) { if (std::max(g.r0, g.r1) > kEps && c > ga - 2.5 && c < gb + 2.5) return false; }   // la cota no cruza el rayado
+                            else if (std::max(g.r0, g.r1) > r - 0.2) return false;
+                        }
+                        return true;
+                    };
+                    for (double c = xe + 5; c <= xe + 60; c += 0.5) if (okAt(c, xe) && c - xe < bx) { bx = c - xe; x = c; break; }
+                    for (double c = xs - 5; c >= xs - 60; c -= 0.5) if (okAt(c, xs) && xs - c < bx) { bx = xs - c; x = c; break; }
+                }
+                if (bx < 1e17) { double from = x > xe ? xe : xs; { const double sx = x > from ? 1 : -1; line(d, from + sx, Y(r), x + 2 * sx, Y(r), 0.18); line(d, from + sx, Y(-r), x + 2 * sx, Y(-r), 0.18); } }
+                else {
+                    x = xf; outN++;
+                    line(d, xe + 1, Y(r), x + 2, Y(r), 0.18); line(d, xe + 1, Y(-r), x + 2, Y(-r), 0.18);
+                }
             }
             usedX.push_back(x);
         }
@@ -812,19 +986,27 @@ Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
                     for (double sg : {1.0, -1.0}) line(d, X(za), Y(sg * rn), X(zb), Y(sg * rn), 0.18);
             }
         }
+        if (!inner) shown = sameN(r, za, zb) + shown;
         double tw = textW(shown, kTxt);
-        mask(d, x - 1.9, cy, kTxt + 1, tw + 2);
-        text(d, x - 0.6, cy - tw / 2, kTxt, shown, 90);
+        if (Y(r) - Y(-r) < 7) {   // ISO 129-1 5.4: con flechas por fuera el texto va también fuera, prolongando la línea de cota, no sobre la pieza
+            text(d, x - 0.6, Y(r) + 7, kTxt, shown, 90);
+        } else {
+            mask(d, x - 1.9, cy, kTxt + 1, tw + 2);
+            text(d, x - 0.6, cy - tw / 2, kTxt, shown, 90);
+        }
         d.dims.push_back({"diameter", 2 * r, t, tk});
     };
+    for (int pass = 0; pass < 2; pass++)   // F1: los tramos estrechos (gargantas, resaltes cortos) al final, para que su Ø lo acote antes un tramo ancho del mismo radio
     for (int i = 0; i < n; i++) {
         const Seg& g = p.segs[i];
         if (g.kind == Seg::Plane || g.kind == Seg::Arc) continue;
+        if (((g.z1 - g.z0) * s < 6 && near(g.r0, g.r1)) != (pass == 1)) continue;
         if (soft[i]) continue;
         if (polyPrism && !g.inner && g.z0 >= p.cuts[0].z0 - 0.7 && g.z1 <= p.cuts[0].z1 + 0.7) continue;  // chaflán/arandela del prisma: su Ø no se fabrica por separado
         if (g.inner && !p.hexes.empty() && std::fabs(2 * std::max(g.r0, g.r1) - 2 * p.hexes[0].af / std::sqrt(3.0)) < 1e-3) continue;  // pared del hueco hexagonal: se acota «entre caras»
 
         if (g.kind != Seg::Plane && inWin(g.z0, g.z1)) continue;
+        if (g.cut) continue;   // detalle: este Ø sale en la vista principal (ISO 129-1 §5.1: cada cota una sola vez)
         if (near(g.r0, g.r1)) addDia(g.r0, g.inner, g.z0, g.z1);
         else {  // cono: diámetros de los extremos que no estén ya acotados por el vecino
             for (int e = 0; e < 2; e++) {
@@ -892,7 +1074,11 @@ Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
         d.dims.push_back({g.kind == Seg::Arc ? "radius" : lab[i].find("×") == std::string::npos ? "angle" : "chamfer", v, lab[i]});
     }
 
-    if (nEdge) d.warnings.push_back(Tf("{0} roturas de arista menores de 0,3 mm sin acotar (ISO 13715)", {std::to_string(nEdge)}));
+    if (nEdge) {
+        std::string w = Tf("{0} roturas de arista menores de 0,3 mm sin acotar (ISO 13715)", {std::to_string(nEdge)});
+        if (gLoc.imperial) for (const char* q : {"0,3 mm", "0.3 mm"}) { const size_t k = w.find(q); if (k != std::string::npos) { w.replace(k, 6, fmtIn(0.3) + " in"); break; } }   // 0,3 mm = .012 in (ASME Y14.5 §4.3.2)
+        d.warnings.push_back(w);
+    }
 
     // garganta en V (dos conos exteriores que se encuentran en el fondo): ángulo incluido; no en roscas modeladas (muchos conos)
     int nCones = 0;
@@ -934,6 +1120,7 @@ Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
     const int nWd = wLevels(s, wlv);
     const double ordBlock = useOrd ? [&] { std::vector<int> lv; return ordLevels(s, lv) * ordStep + 4; }() : 0.0;
     auto lenDim = [&](double za, double zb, int level) {
+        if (o.detail && za < kEps && near(zb, L)) return;   // detalle: la cota hasta el borde de corte no es una cota de la pieza
         double yd = Y(-rmax) - 8 - level * 7 - (useOrd && level >= nWd ? ordBlock : 0);
         double xa = X(za), xb = X(zb);
         for (double z : {za, zb}) {
@@ -941,11 +1128,12 @@ Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
             line(d, X(z), ye, X(z), yd - 2);
         }
         line(d, xa, yd, xb, yd);
-        std::string t = fmt(zb - za);
+        const double rl = realZ(zb) - realZ(za);
+        std::string t = fmt(rl);
         bool inside = (xb - xa) >= 2 * 3.0 + 2;
         if (inside) { arrow(d, xa, yd, 1, 0); arrow(d, xb, yd, -1, 0); }
         else { arrow(d, xa, yd, -1, 0); arrow(d, xb, yd, 1, 0); line(d, xa - 4, yd, xa, yd); line(d, xb, yd, xb + 4, yd); }
-        std::string shown = withTol(t, fmtK(zb - za), zb - za);
+        std::string shown = withTol(t, fmtK(rl), rl);
         double tw = textW(shown, kTxt);
         // el valor va centrado; si no cabe o lo cruza una línea de referencia, fuera de las flechas en el primer hueco sin líneas
         auto clear = [&](double tx) { for (double u : extX) if (u > tx - 0.4 && u < tx + tw + 0.4) return false; return true; };
@@ -956,7 +1144,7 @@ Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
             if (!clear(tx)) tx = xb + 4.5;
         }
         text(d, tx, yd + 1, kTxt, shown);
-        d.dims.push_back({"length", zb - za, t, fmtK(zb - za)});
+        d.dims.push_back({"length", rl, t, fmtK(rl)});
     };
     int lvl = 0;
     if (!widths.empty()) { for (size_t i = 0; i < widths.size(); i++) lenDim(widths[i].z0, widths[i].z1, wlv[i]); lvl = nWd; }
@@ -972,7 +1160,7 @@ Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
         one(0, lv[0], "0");
         for (size_t i = 0; i < ords.size(); i++) {
             one(ords[i].z, lv[i + 1], ords[i].shown);
-            d.dims.push_back({"length", ords[i].z, ords[i].t, fmtK(ords[i].z)});
+            d.dims.push_back({"length", realZ(ords[i].z), ords[i].t, fmtK(realZ(ords[i].z))});
         }
     }
     for (auto& b : base) { if (useOrd && near(b.z0, 0) && b.z1 > kEps) continue; lenDim(b.z0, b.z1, lvl++); }
@@ -1066,6 +1254,7 @@ Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
             }
         }
         if (c.z1 - c.z0 < kMinFeat || polyPrism) break;  // rasgo de longitud nula (o prisma: su longitud ya está en la cadena de cotas): no hay cota que dar
+        if (c.z0 < kEps && c.z1 > p.length - kEps) break;  // M8: pasante en toda la longitud: ya es la cota total de la cadena (la nota C1 da su longitud)
         // cota de longitud del rasgo, sobre la vista
         double yd = Y(rmax) + 8;
         line(d, x0, Y(rmax) + 1, x0, yd + 2); line(d, x1, Y(rmax) + 1, x1, yd + 2); line(d, x0, yd, x1, yd);
@@ -1189,6 +1378,7 @@ Drawing layoutImpl(const Profile& p, const Meta& meta, const Opt& o) {
         }
         for (double r : rs) circle(s * r, 0.25);
         if (p.rootR > kEps) circle(s * p.rootR, 0.25);   // círculo de pie (fino)
+        if (p.thrRootR > kEps) d.arcs.push_back({ex, ey, s * p.thrRootR, 90, 360, LineType::Continuous, 0.25});   // fondo de rosca: 3/4 de círculo, ISO 6410-1 §5.1
         if (p.faceTeeth > 0) for (int k = 0; k < 2 * p.faceTeeth; k++) {   // dentado frontal: aristas de cresta y de valle (visibles, ISO 128-20)
             const double an = p.faceAng0 + k * 3.14159265358979 / p.faceTeeth, c = std::cos(an), sn = std::sin(an);
             line(d, ex + s * p.faceRi * c, ey + s * p.faceRi * sn, ex + s * rmax * c, ey + s * rmax * sn, k % 2 ? 0.25 : 0.35);
@@ -1310,7 +1500,7 @@ static Profile clipProfile(const Profile& p, double a, double b) {
         if (g.z1 < a - kEps || g.z0 > b + kEps) continue;
         if (g.z0 < a - kEps || g.z1 > b + kEps) {  // cruza el borde: solo un cilindro se puede cortar sin inventar ningún Ø
             if (g.kind != Seg::Line || !near(g.r0, g.r1)) continue;
-            g.z0 = std::max(g.z0, a); g.z1 = std::min(g.z1, b);
+            g.z0 = std::max(g.z0, a); g.z1 = std::min(g.z1, b); g.cut = true;
         }
         if (g.kind == Seg::Plane && (near(g.z0, a) || near(g.z0, b))) continue;
         if (g.kind != Seg::Plane) {
@@ -1360,6 +1550,7 @@ static Drawing layoutBase(const Profile& p, const Meta& meta) {
             if (ds <= 1.5 * d.scale || ds > 20) continue;
             if (++tries > 250) goto fallback;
             Opt dt; dt.detail = true; dt.ds = ds;
+            for (auto& g : p.segs) if (g.kind != Seg::Plane && g.kind != Seg::Arc && !(g.z0 >= w.a - 1e-6 && g.z1 <= w.b + 1e-6)) { dt.mainR.push_back(g.r0); dt.mainR.push_back(g.r1); }
             Drawing e = layoutImpl(clipProfile(p, w.a, w.b), meta, dt);
             if (!findOverlaps(e).empty()) continue;
             Opt om; om.wz0 = w.a; om.wz1 = w.b; om.ds = ds; om.det = &e; om.detW = e.sheetW; om.detH = e.sheetH;
@@ -1378,8 +1569,41 @@ fallback:
     return layoutImpl(p, meta, od);
 }
 
-Drawing layout(const Profile& p, const Meta& meta) {
+Drawing layout(const Profile& p0, const Meta& meta) {
+    // M9: en una pieza que se declara NO torneada (dentado, poleas…) los «taladros» en corona son los huecos de los dientes: no se rotulan como taladros A
+    Profile pc;
+    const Profile* pp = &p0;
+    {
+        size_t nu = 0; for (auto& kv : p0.unsupported) nu += kv.second;
+        if (p0.sites.size() >= 12 && p0.totArea > 0 && (p0.unsupArea > 0.25 * p0.totArea || (nu >= 12 && p0.unsupArea > 0.08 * p0.totArea))) { pc = p0; pc.sites.clear(); pp = &pc; }
+    }
+    // M7: barra larga sin rasgos (cilindro de radio constante > 55 % de la longitud): vista interrumpida
+    Profile pb;
+    gBrk = {-1, 0};
+    {
+        const Profile& q = *pp;
+        double bz0 = 0, bz1 = 0;
+        for (auto& g : q.segs) if (g.kind == Seg::Line && !g.inner && std::fabs(g.r0 - g.r1) < 1e-6 && g.z1 - g.z0 > bz1 - bz0) { bz0 = g.z0; bz1 = g.z1; }
+        bool ok = bz1 - bz0 > 0.55 * q.length && q.length > 150 && q.rholes.empty() && q.cuts.empty() && q.sites.empty() && q.hexes.empty() && q.unsupported.empty() && q.rootR == 0 && q.faceTeeth == 0;
+        if (ok) for (auto& g : q.segs) if (g.inner && g.z1 > bz0 && g.z0 < bz1) ok = false;
+        if (ok) {
+            const double keep = std::max(40.0, 3.0 * 2 * std::fabs(q.segs.empty() ? 0 : [&] { double r = 0; for (auto& g : q.segs) r = std::max({r, g.r0, g.r1}); return r; }()));
+            const double delta = (bz1 - bz0) - keep;
+            if (delta > 20) {
+                pb = q;
+                const double zc = bz0 + 0.2 * keep;
+                for (auto& g : pb.segs) {
+                    for (double* z : {&g.z0, &g.z1, &g.cz, &g.mz}) if (*z > bz1 - 1e-6) *z -= delta;
+                }
+                pb.length -= delta;
+                gBrk = {zc, delta};
+                pp = &pb;
+            }
+        }
+    }
+    const Profile& p = *pp;
     Drawing d = layoutBase(p, meta);
+    gBrk = {-1, 0};
     mergeNearParallel(d);
     return d;
 }

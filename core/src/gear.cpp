@@ -42,7 +42,7 @@
 namespace diedro {
 namespace {
 std::string gLang = "es";
-std::string fmt(double v) {
+std::string fmtA(double v) {   // magnitud sin unidad (ángulo)
     char b[32]; std::snprintf(b, sizeof b, "%.2f", v);
     std::string s = b;
     while (!s.empty() && s.back() == '0') s.pop_back();
@@ -50,6 +50,7 @@ std::string fmt(double v) {
     if (decimalComma(gLang)) { auto i = s.find('.'); if (i != std::string::npos) s[i] = ','; }
     return s;
 }
+std::string fmt(double v) { return gImperialUnits ? fmtIn(v) : fmtA(v); }   // longitud: pulgadas con ASME Y14.5 §4.3.2 si meta.imperial
 const double kPi = 3.14159265358979323846;
 const int kBins = 1440;
 
@@ -161,7 +162,7 @@ double phase(const Sec& s, int N, double& amp) {
 }  // namespace
 
 #define NO(m) do { if (std::getenv("DIEDRO_DBG")) std::fprintf(stderr, "GEAR no: %s\n", m); return false; } while (0)
-bool gManyFree = false;
+std::atomic<bool> gManyFree{false};
 bool layoutGear(const std::string& path, const Meta& meta, Profile& pf, Drawing& d) {
     gManyFree = false;
     TopoDS_Shape shape;
@@ -465,7 +466,7 @@ bool layoutGear(const std::string& path, const Meta& meta, Profile& pf, Drawing&
     p.extraNotes.push_back(tr("Ø de cabeza (medido)", meta.lang) + ": " + fmt(tipD) + "; " + tr("Ø de pie (medido)", meta.lang) + ": " + fmt(rootD));
     if (twist != 0) {
         const double beta = std::atan(std::fabs(twist) * kPi / 180 * tm.rmax / W) * 180 / kPi;
-        p.extraNotes.push_back(tr("Hélice", meta.lang) + ": " + tr(twist > 0 ? "dcha." : "izq.", meta.lang) + ", β " + tr("en Ø de cabeza", meta.lang) + " = " + fmt(beta) + "°");
+        p.extraNotes.push_back(tr("Hélice", meta.lang) + ": " + tr(twist > 0 ? "dcha." : "izq.", meta.lang) + ", β " + tr("en Ø de cabeza", meta.lang) + " = " + fmtA(beta) + "°");
     } else p.extraNotes.push_back(tr("Hélice", meta.lang) + ": " + tr("dientes rectos", meta.lang));
     (void)keyW; (void)keyH; (void)boreR;
     auto user = [&](const char* k) { auto it = meta.tols.find(k); return it == meta.tols.end() ? std::string() : it->second; };

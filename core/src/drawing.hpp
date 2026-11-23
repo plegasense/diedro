@@ -2,7 +2,11 @@
 // Copyright (C) Plegasense
 // Modelo de plano de Diedro: independiente de OCCT. Unidades: mm en coordenadas de hoja (origen abajo-izquierda).
 #pragma once
+#include <algorithm>
+#include <cmath>
+#include <map>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -47,6 +51,39 @@ struct Drawing {
     std::vector<std::string> warnings;  // limitaciones visibles también en el plano
     std::string label, kind;            // rótulo de la hoja y tipo (asm, cut, prism, turn) para la lista de hojas de la app
 };
+
+// M4: segmentos ocultos horizontales/verticales superpuestos en la misma recta (de distintas operaciones) se funden en uno:
+// si no, los trazos de cada copia se rellenan entre sí y la línea oculta parece continua. Las demás líneas no cambian.
+inline void mergeHidden(std::vector<Line>& ls) {
+    std::map<std::tuple<int, long, long>, std::vector<size_t>> grp;
+    for (size_t i = 0; i < ls.size(); i++) {
+        const Line& l = ls[i];
+        if (l.type != LineType::Hidden) continue;
+        bool hz = std::fabs(l.y1 - l.y2) < 1e-6, vt = std::fabs(l.x1 - l.x2) < 1e-6;
+        if (hz == vt) continue;
+        grp[{hz ? 0 : 1, std::lround((hz ? l.y1 : l.x1) * 1000), std::lround(l.width * 1000)}].push_back(i);
+    }
+    std::vector<char> del(ls.size(), 0);
+    for (auto& kv : grp) {
+        auto& ix = kv.second;
+        if (ix.size() < 2) continue;
+        const bool hz = std::get<0>(kv.first) == 0;
+        auto lo = [&](const Line& l) { return hz ? std::min(l.x1, l.x2) : std::min(l.y1, l.y2); };
+        auto hi = [&](const Line& l) { return hz ? std::max(l.x1, l.x2) : std::max(l.y1, l.y2); };
+        std::sort(ix.begin(), ix.end(), [&](size_t a, size_t b) { return lo(ls[a]) < lo(ls[b]); });
+        size_t cur = ix[0];
+        for (size_t k = 1; k < ix.size(); k++) {
+            Line& c = ls[cur]; const Line& n = ls[ix[k]];
+            if (lo(n) <= hi(c) + 1e-6) {   // se tocan o se solapan: se alarga el actual
+                if (hi(n) > hi(c)) { if (hz) { c.x1 = lo(c); c.x2 = hi(n); } else { c.y1 = lo(c); c.y2 = hi(n); } }
+                del[ix[k]] = 1;
+            } else cur = ix[k];
+        }
+    }
+    std::vector<Line> out;
+    for (size_t i = 0; i < ls.size(); i++) if (!del[i]) out.push_back(ls[i]);
+    ls.swap(out);
+}
 
 // PDF vectorial determinista (mismas entradas -> mismos bytes). Devuelve los bytes del archivo.
 std::string toPdf(const Drawing& d);

@@ -3,6 +3,7 @@
 #include "i18n.hpp"
 #include <cstring>
 #include "i18n_table.hpp"
+#include "projsym.hpp"
 namespace diedro {
 std::string tr(const std::string& es, const std::string& lang) {
     if (lang == "es") return es;
@@ -13,7 +14,11 @@ std::string tr(const std::string& es, const std::string& lang) {
         if (es == kRows[i][0]) { const char* t = kRows[i][1 + col]; if (!*t) t = kRows[i][1]; return *t ? t : es; }
     return es;
 }
-bool decimalComma(const std::string&) { return true; }   // ISO 129-1 4.? : marcador decimal siempre coma, en cualquier idioma
+bool decimalComma(const std::string& l) {
+    if (gThirdAngle || gImperialUnits) return false;
+    for (const char* d : {"en", "ja", "ko", "zh", "tw", "th", "hi"}) if (l == d) return false;   // M1/N7 (decisión propia): punto decimal en los idiomas que lo usan, igual que la interfaz (I18n.num)
+    return true;
+}   // ISO 129-1: coma en cualquier idioma; M1 (decisión propia): ASME Y14.5 §1.4 (tercer diedro / pulgadas) = punto
 std::string pdfLang(const std::string& l) {
     static const char* nopdf[] = {"ja", "ko", "zh", "tw", "th", "hi"};
     for (auto d : nopdf) if (l == d) return "en";

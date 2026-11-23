@@ -36,9 +36,9 @@ int main(int argc, char** argv) {
     if (argc > 5) m.generalTolerance = argv[5];
     if (argc > 6) m.partNo = argv[6];
     if (const char* l = std::getenv("DIEDRO_LANG")) { m.langUi = l; m.lang = pdfLang(l); }
-    m.imperial = std::getenv("DIEDRO_IMPERIAL") != nullptr;
+    m.imperial = std::getenv("DIEDRO_IMPERIAL") != nullptr; gImperialUnits = m.imperial;
     if (const char* pj = std::getenv("DIEDRO_PROJ")) gThirdAngle = std::string(pj) == "asme" || std::string(pj) == "3";   // G10: asme = tercer diedro
-    if (const char* sh = std::getenv("DIEDRO_SHEET")) m.sheet = sh;
+    if (const char* sh = std::getenv("DIEDRO_SHEET")) { m.sheet = sh; static const char* ok[] = {"A4", "A3", "A2", "A1", "A0"}; bool v = false; for (auto o : ok) v |= m.sheet == o; if (!v) { std::fprintf(stderr, "DIEDRO_SHEET=%s no válido (A4, A3, A2, A1, A0)\n", sh); return 2; } }
     m.explode = std::getenv("DIEDRO_EXPLODE") != nullptr;
     for (int i = 7; i + 1 < argc; i += 2) setUserTol(m, argv[i], argv[i + 1]);
     if (!std::getenv("DIEDRO_NO_DISCARD")) {   // G15: pieza fuera de alcance -> hoja de aviso, sin vistas ni cotas
@@ -55,7 +55,7 @@ int main(int argc, char** argv) {
             auto t0 = std::chrono::steady_clock::now();
             auto pages = layoutAssembly(argv[1], m, tmp, e, c.nParts);
             if (std::getenv("DIEDRO_DBG")) std::fprintf(stderr, "CLI layoutAssembly %.1fs\n", std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
-            if (!e.empty()) { std::printf("ERROR %s\n", e.c_str()); return 1; }
+            if (!e.empty() || pages.empty()) { std::printf("ERROR %s\n", e.empty() ? "sin hojas" : e.c_str()); return 1; }
             auto t1 = std::chrono::steady_clock::now();
             std::ofstream(argv[2], std::ios::binary) << toPdfMulti(pages);
             if (std::getenv("DIEDRO_DBG")) std::fprintf(stderr, "CLI pdf %.1fs\n", std::chrono::duration<double>(std::chrono::steady_clock::now() - t1).count());
@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
     bool gear = false;
     if (!std::getenv("DIEDRO_NO_GEAR") && !std::getenv("DIEDRO_FORCE_PRISM")) { Classification c = classifyStep(argv[1]); if (c.error.empty() && (c.group == 6 || c.group == 0)) { const bool corona = c.reason.find("corona") != std::string::npos; gear = (!corona && layoutSpring(argv[1], m, d)) || layoutGear(argv[1], m, p, d) || (!gManyFree && (layoutCamshaft(argv[1], m, d) || layoutCam(argv[1], m, d) || layoutCam3D(argv[1], m, d))); } }   // rosca de tornillo (>100 caras B-spline, «corona») no es muelle ni leva: ahorra ≈0,6 s
     if (!gear && !std::getenv("DIEDRO_NO_GEAR") && !std::getenv("DIEDRO_FORCE_PRISM")) { Classification c = classifyStep(argv[1]); if (c.error.empty() && (c.group == 13 || c.group == 14)) gear = layoutPipe(argv[1], m, d, c.group == 14); if (!gear && c.error.empty() && c.group == 14) gear = layoutHarness(argv[1], m, d); }   // tubo curvado: línea media y tabla de curvado
-    if (!gear && !std::getenv("DIEDRO_NO_GEAR") && !std::getenv("DIEDRO_FORCE_PRISM")) { Classification c = classifyStep(argv[1]); if (c.error.empty() && c.group >= 1 && c.group <= 3) { gCamStrict = true; gCamMinH = 0.4; gear = layoutCamshaft(argv[1], m, d) || layoutCam(argv[1], m, d); gCamStrict = false; gCamMinH = 0; } }   // lóbulo de leva suelto: lo clasifica G1–G3, pero su contorno de arcos con taladro es de leva
+    if (!gear && !std::getenv("DIEDRO_NO_GEAR") && !std::getenv("DIEDRO_FORCE_PRISM")) { Classification c = classifyStep(argv[1]); if (c.error.empty() && c.group >= 1 && c.group <= 3) { CamGuard cg(0.4); gear = layoutCamshaft(argv[1], m, d) || layoutCam(argv[1], m, d); } }   // lóbulo de leva suelto: lo clasifica G1–G3, pero su contorno de arcos con taladro es de leva
     if (!gear) p = analyzeStep(argv[1]);
     if (std::getenv("DIEDRO_PMI")) for (auto& q : readPmi(argv[1])) std::printf("PMI %s %g +%g %g\n", q.diameter ? "dia" : q.radius ? "rad" : "len", q.value, q.upper, q.lower);
     if (const char* tp = std::getenv("DIEDRO_TESTPMI")) { PmiDim q; q.diameter = true; std::sscanf(tp, "%lf:%lf:%lf", &q.value, &q.upper, &q.lower); p.pmi.push_back(q); }  // solo pruebas
