@@ -285,6 +285,7 @@ public class MainActivity extends Activity {
             + "\n\nNoto Sans / Noto Sans CJK (glyph outlines for ja, ko, zh, th, hi): Copyright 2012 Google Inc. and The Noto Project Authors; Adobe Source Han Sans: Copyright Adobe. SIL Open Font License 1.1 (https://openfontlicense.org)."
             + "\n\nDXF template derived from ezdxf: MIT License, Copyright (c) 2020 Manfred Moitzi."
             + "\n\nAndroidX and kotlinx-coroutines/Kotlin runtime: Apache-2.0 (Copyright The Android Open Source Project, JetBrains s.r.o.)."
+            + "\n\nReLinker (Keepsafe) and Material Icons font (Google): Apache-2.0."
             + "\n\nFlutter, Dart and Flutter packages: BSD-3-Clause, MIT, Apache-2.0 and other permissive licences (Copyright The Flutter and Dart authors); full notices in LICENSES/THIRD_PARTY_NOTICES-flutter.txt of the repository."
             + "\n\n" + "Source code and full licence texts (files LICENSE, NOTICE and LICENSES): https://github.com/plegasense/diedro";
         TextView tv = Ui.text(this, txt, 13, Ui.TEXT, false);

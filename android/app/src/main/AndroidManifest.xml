@@ -3,10 +3,10 @@
     <!-- Ninguna librería (Flutter) puede reintroducir INTERNET: se elimina del manifiesto fusionado. -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove"/>
     <!-- Sin permiso INTERNET a propósito: la app es 100 % offline. -->
-    <application android:label="Diedro" android:icon="@mipmap/ic_launcher" android:theme="@style/Theme.Diedro" android:allowBackup="false" android:supportsRtl="true">
+    <application android:label="Diedro" android:icon="@mipmap/ic_launcher" android:theme="@style/Theme.Diedro" android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true">
         <meta-data android:name="io.flutter.embedding.android.EnableFlutterGPU" android:value="true"/>
         <meta-data android:name="io.flutter.embedding.android.EnableImpeller" android:value="true"/>
-        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop" android:configChanges="orientation|screenSize|keyboardHidden">
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop" android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode|density">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/><action android:name="android.intent.action.SEND"/>
