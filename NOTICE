@@ -1,6 +1,7 @@
 Diedro — planos de fabricación desde STEP.
 Copyright (C) 2026 Plegasense. Licencia: GNU GPL v3.0 o posterior (ver LICENSE).
 Contacto: plegasense@gmail.com
+Los textos de licencia (carpeta LICENSES/ del repositorio) van dentro de la app en assets/licenses/ y se muestran en Ajustes > Licencias y privacidad.
 
 Componentes de terceros:
 - Open CASCADE Technology 7.9.3 — LGPL 2.1 con excepción OCCT (https://dev.opencascade.org; textos en LICENSES/LGPL-2.1.txt y LICENSES/OCCT-LGPL-exception.txt). Enlazado estáticamente y sin modificar;

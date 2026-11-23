@@ -1,5 +1,6 @@
 #!/bin/bash
-# Build real de OCCT 7.9.3 (sin modificar) para Android arm64, estático. Uso: OCCT_SRC=... SDK=... tools/build_occt_android_real.sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Build real de OCCT 7.9.3 (sin modificar) para Android arm64, estático. Uso: OCCT_SRC=... SDK=... tools/build_occt_android.sh
 set -e
 SDK=${SDK:-$HOME/Library/Android/sdk}; NDK=${NDK:-$SDK/ndk/28.2.13676358}
 OCCT_SRC=${OCCT_SRC:-$HOME/occt-build/src}; B=${B:-$HOME/occt-build/b}; PREFIX=${PREFIX:-$HOME/occt-build/install}
